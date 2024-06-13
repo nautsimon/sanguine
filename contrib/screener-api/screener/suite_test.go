@@ -18,6 +18,7 @@ import (
 	"github.com/synapsecns/sanguine/contrib/screener-api/metadata"
 	"github.com/synapsecns/sanguine/contrib/screener-api/screener"
 	"github.com/synapsecns/sanguine/contrib/screener-api/trmlabs"
+	chainalysis "github.com/synapsecns/sanguine/contrib/screener-api/trmlabs"
 	"github.com/synapsecns/sanguine/core"
 	"github.com/synapsecns/sanguine/core/dbcommon"
 	"github.com/synapsecns/sanguine/core/metrics"
@@ -196,11 +197,11 @@ func (s *ScreenerSuite) TestScreener() {
 }
 
 type mockClient struct {
-	responseMap map[string][]trmlabs.ScreenResponse
+	responseMap map[string][]chainalysis.ScreenResponse
 }
 
 // ScreenAddress mocks the screen address method.
-func (m mockClient) ScreenAddress(ctx context.Context, address string) ([]trmlabs.ScreenResponse, error) {
+func (m mockClient) ScreenAddress(ctx context.Context, address string) ([]chainalysis.ScreenResponse, error) {
 	if m.responseMap == nil {
 		return nil, fmt.Errorf("no response map")
 	}
@@ -208,21 +209,4 @@ func (m mockClient) ScreenAddress(ctx context.Context, address string) ([]trmlab
 	return m.responseMap[address], nil
 }
 
-var _ trmlabs.Client = mockClient{}
-
-const testFile = `Enabled,ID,Category,Name,Type of risk,Severity,FE,RFQ
-true,1,test_category,name,Risk Type,severity,true,false
-false,2,test_category,name,Risk Type,severity,true,false
-true,3,test_category,name,Risk Type,severity,false,true`
-
-func TestSplitCSV(t *testing.T) {
-	testfile := filet.TmpFile(t, "", testFile)
-	out, err := screener.SplitCSV(testfile.Name())
-	Nil(t, err)
-
-	// 2 different files
-	Equal(t, 2, len(out))
-	Equal(t, "true", out["FE"][1].Enabled)
-	Equal(t, "false", out["RFQ"][1].Enabled)
-	Equal(t, "true", out["RFQ"][2].Enabled)
-}
+var _ chainalysis.Client = mockClient{}

@@ -1,3 +1,3 @@
-// Package trmlabs contains the implementation of the TRM Labs API client.
+// Package chainalysis contains the implementation of the Chainalysis API client.
 // this implementation is incomplete, but it is a good starting point.
-package trmlabs
+package chainalysis

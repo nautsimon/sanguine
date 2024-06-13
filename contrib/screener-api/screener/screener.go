@@ -2,9 +2,9 @@
 package screener
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,8 +20,7 @@ import (
 	"github.com/synapsecns/sanguine/contrib/screener-api/db"
 	"github.com/synapsecns/sanguine/contrib/screener-api/db/sql"
 	"github.com/synapsecns/sanguine/contrib/screener-api/docs"
-	"github.com/synapsecns/sanguine/contrib/screener-api/screener/internal"
-	"github.com/synapsecns/sanguine/contrib/screener-api/trmlabs"
+	chainalysis "github.com/synapsecns/sanguine/contrib/screener-api/trmlabs"
 	"github.com/synapsecns/sanguine/core"
 	"github.com/synapsecns/sanguine/core/dbcommon"
 	"github.com/synapsecns/sanguine/core/ginhelper"
@@ -29,7 +28,6 @@ import (
 	baseServer "github.com/synapsecns/sanguine/core/server"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/slices"
 
 	swaggerfiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -41,16 +39,15 @@ type Screener interface {
 }
 
 type screenerImpl struct {
-	rulesManager internal.RulesetManager
-	thresholds   []config.VolumeThreshold
 	db           db.DB
 	router       *gin.Engine
 	metrics      metrics.Handler
 	cfg          config.Config
-	client       trmlabs.Client
+	client       chainalysis.Client
 	blacklist    []string
 	blacklistMux sync.RWMutex
 	whitelist    []string
+	entityCache  []string
 }
 
 var logger = log.Logger("screener")
@@ -65,19 +62,13 @@ func NewScreener(ctx context.Context, cfg config.Config, metricHandler metrics.H
 	docs.SwaggerInfo.Title = "Screener API"
 	docs.SwaggerInfo.Host = fmt.Sprintf("localhost:%d", cfg.Port)
 
-	screener.client, err = trmlabs.NewClient(cfg.TRMKey, core.GetEnv("TRM_URL", "https://api.trmlabs.com"))
+	screener.client, err = chainalysis.NewClient(cfg.TRMKey, core.GetEnv("TRM_URL", "https://api.trmlabs.com"))
 	if err != nil {
 		return nil, fmt.Errorf("could not create trm client: %w", err)
 	}
-	screener.thresholds = cfg.VolumeThresholds
 
 	for _, item := range cfg.Whitelist {
 		screener.whitelist = append(screener.whitelist, strings.ToLower(item))
-	}
-
-	screener.rulesManager, err = setupScreener(cfg.Rulesets)
-	if err != nil {
-		return nil, fmt.Errorf("could not setup screener: %w", err)
 	}
 
 	dbType, err := dbcommon.DBTypeFromString(cfg.Database.Type)
@@ -90,14 +81,40 @@ func NewScreener(ctx context.Context, cfg config.Config, metricHandler metrics.H
 		return nil, fmt.Errorf("could not connect to rules db: %w", err)
 	}
 
+	screener.entityCache = make([]string, 100_000)
+
 	screener.router = ginhelper.New(logger)
 	screener.router.Use(screener.metrics.Gin())
-	screener.router.Handle(http.MethodGet, "/:ruleset/address/:address", screener.screenAddress)
+
+	// remove this
+	// screener.router.Handle(http.MethodGet, "/:ruleset/address/:address", screener.screenAddress)
+
+	screener.router.Handle(http.MethodPost, "/:address", screener.registerAddress)
+	screener.router.Handle(http.MethodGet, "/:address", screener.retrieveRiskAssessment)
 
 	screener.router.Handle(http.MethodPost, "/api/data/sync", screener.authMiddleware(cfg), screener.blacklistAddress)
 	screener.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
 
 	return &screener, nil
+}
+
+func (s *screenerImpl) Start(ctx context.Context) error {
+	// TODO: potential race condition here, if the blacklist is not fetched before the first request
+	// in practice trm will catch
+	go func() {
+		for {
+			if s.cfg.BlacklistURL != "" {
+				s.fetchBlacklist(ctx)
+				time.Sleep(1 * time.Second * 15)
+			}
+		}
+	}()
+	connection := baseServer.Server{}
+	err := connection.ListenAndServe(ctx, fmt.Sprintf(":%d", s.cfg.Port), s.router)
+	if err != nil {
+		return fmt.Errorf("could not start server: %w", err)
+	}
+	return nil
 }
 
 func (s *screenerImpl) fetchBlacklist(ctx context.Context) {
@@ -130,6 +147,137 @@ func (s *screenerImpl) fetchBlacklist(ctx context.Context) {
 	for _, item := range blacklist {
 		s.blacklist = append(s.blacklist, strings.ToLower(item))
 	}
+}
+
+// screenAddress returns whether an address is risky or not given a ruleset.
+// @Summary Screen address for risk
+// @Description Assess the risk associated with a given address using specified rulesets.
+// @Tags address
+// @Accept  json
+// @Produce  json
+// @Param ruleset query string true "Ruleset to use for screening the address"
+// @Param address query string true "Address to be screened"
+// @Success 200 {object} map[string]bool "Returns the risk assessment result"
+// @Failure 400 {object} map[string]string "Returns error if the required parameters are missing or invalid"
+// @Failure 500 {object} map[string]string "Returns error if there are problems processing the indicators"
+// @Router /screen/{ruleset}/{address} [get].
+//func (s *screenerImpl) screenAddress(c *gin.Context) {
+//	var err error
+//
+//	address := strings.ToLower(c.Param("address"))
+//	if address == "" {
+//		c.JSON(http.StatusBadRequest, gin.H{"error": "address is required"})
+//		return
+//	}
+//
+//	s.blacklistMux.RLock()
+//	if slices.Contains(s.blacklist, address) {
+//		c.JSON(http.StatusOK, gin.H{"risk": true})
+//		s.blacklistMux.RUnlock()
+//		return
+//	}
+//	s.blacklistMux.RUnlock()
+//
+//	if slices.Contains(s.whitelist, address) {
+//		c.JSON(http.StatusOK, gin.H{"risk": false})
+//		return
+//	}
+//
+//	ctx, span := s.metrics.Tracer().Start(c.Request.Context(), "screenAddress", trace.WithAttributes(attribute.String("address", address)))
+//	defer func() {
+//		metrics.EndSpanWithErr(span, err)
+//	}()
+//
+//	currentRules := s.rulesManager.GetRuleset(ruleset)
+//	if currentRules == nil {
+//		c.JSON(http.StatusBadRequest, gin.H{"error": "ruleset not found"})
+//		return
+//	}
+//
+//	goodUntil := time.Now().Add(-1 * s.cfg.GetCacheTime(ruleset))
+//	var indicators []trmlabs.AddressRiskIndicator
+//	if indicators, err = s.getIndicators(ctx, address, goodUntil); err != nil {
+//		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+//		return
+//	}
+//
+//	var hasIndicator bool
+//	if hasIndicator, err = currentRules.HasAddressIndicators(s.thresholds, indicators...); err != nil {
+//		c.JSON(http.StatusOK, gin.H{"risk": true})
+//		return
+//	}
+//
+//	c.JSON(http.StatusOK, gin.H{"risk": hasIndicator})
+//
+//}
+
+func (s *screenerImpl) registerAddress(c *gin.Context) {
+	address := strings.ToLower(c.Param("address"))
+	if address == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "address is required"})
+		return
+	}
+
+	req, err := http.NewRequest("POST", s.cfg.ChainalysisURL, bytes.NewBuffer([]byte(address)))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create request"})
+	}
+
+	req.Header.Set("Token", s.cfg.ChainalysisKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not send request"})
+	}
+	defer resp.Body.Close()
+
+}
+
+func (s *screenerImpl) retrieveRiskAssessment(c *gin.Context) {
+	address := strings.ToLower(c.Param("address"))
+	if address == "" {
+		logger.Errorf("address is required")
+		return
+	}
+
+	req, err := http.NewRequest("GET", s.cfg.ChainalysisURL, nil)
+	if err != nil {
+		logger.Errorf("could not create risk assessment request: %s", err)
+		return
+	}
+
+	req.Header.Set("Token", s.cfg.ChainalysisKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		logger.Errorf("could not get risk assessment: %s", err)
+		return
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get risk assessment"})
+		return
+	}
+	var riskResponse chainalysis.ScreenResponse
+	err = json.NewDecoder(resp.Body).Decode(&riskResponse)
+	if err != nil {
+		logger.Errorf("could not decode risk assessment: %s", err)
+		return
+	}
+
+	if riskResponse.Risk == "severe" {
+		c.JSON(http.StatusOK, gin.H{"risk": true})
+		return
+	} else {
+		c.JSON(http.StatusOK, gin.H{"risk": false})
+		return
+	}
+
 }
 
 // @dev Protected Method
@@ -263,125 +411,4 @@ func (s *screenerImpl) authMiddleware(cfg config.Config) gin.HandlerFunc {
 		span.AddEvent("signature_validated")
 		c.Next()
 	}
-}
-
-func (s *screenerImpl) Start(ctx context.Context) error {
-	// TODO: potential race condition here, if the blacklist is not fetched before the first request
-	// in practice trm will catch
-	go func() {
-		for {
-			if s.cfg.BlacklistURL != "" {
-				s.fetchBlacklist(ctx)
-				time.Sleep(1 * time.Second * 15)
-			}
-		}
-	}()
-	connection := baseServer.Server{}
-	err := connection.ListenAndServe(ctx, fmt.Sprintf(":%d", s.cfg.Port), s.router)
-	if err != nil {
-		return fmt.Errorf("could not start server: %w", err)
-	}
-	return nil
-}
-
-// screenAddress returns whether an address is risky or not given a ruleset.
-// @Summary Screen address for risk
-// @Description Assess the risk associated with a given address using specified rulesets.
-// @Tags address
-// @Accept  json
-// @Produce  json
-// @Param ruleset query string true "Ruleset to use for screening the address"
-// @Param address query string true "Address to be screened"
-// @Success 200 {object} map[string]bool "Returns the risk assessment result"
-// @Failure 400 {object} map[string]string "Returns error if the required parameters are missing or invalid"
-// @Failure 500 {object} map[string]string "Returns error if there are problems processing the indicators"
-// @Router /screen/{ruleset}/{address} [get].
-func (s *screenerImpl) screenAddress(c *gin.Context) {
-	var err error
-
-	ruleset := strings.ToLower(c.Param("ruleset"))
-	if ruleset == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ruleset is required"})
-		return
-	}
-
-	address := strings.ToLower(c.Param("address"))
-	if address == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "address is required"})
-		return
-	}
-
-	s.blacklistMux.RLock()
-	if slices.Contains(s.blacklist, address) {
-		c.JSON(http.StatusOK, gin.H{"risk": true})
-		s.blacklistMux.RUnlock()
-		return
-	}
-	s.blacklistMux.RUnlock()
-
-	if slices.Contains(s.whitelist, address) {
-		c.JSON(http.StatusOK, gin.H{"risk": false})
-		return
-	}
-
-	ctx, span := s.metrics.Tracer().Start(c.Request.Context(), "screenAddress", trace.WithAttributes(attribute.String("address", address)))
-	defer func() {
-		metrics.EndSpanWithErr(span, err)
-	}()
-
-	currentRules := s.rulesManager.GetRuleset(ruleset)
-	if currentRules == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ruleset not found"})
-		return
-	}
-
-	goodUntil := time.Now().Add(-1 * s.cfg.GetCacheTime(ruleset))
-	var indicators []trmlabs.AddressRiskIndicator
-	if indicators, err = s.getIndicators(ctx, address, goodUntil); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	var hasIndicator bool
-	if hasIndicator, err = currentRules.HasAddressIndicators(s.thresholds, indicators...); err != nil {
-		c.JSON(http.StatusOK, gin.H{"risk": true})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"risk": hasIndicator})
-}
-
-func (s *screenerImpl) getIndicators(parentCtx context.Context, address string, goodUntil time.Time) (indicators []trmlabs.AddressRiskIndicator, err error) {
-	ctx, span := s.metrics.Tracer().Start(parentCtx, "get-indicators")
-	defer func() {
-		// nolint: errchkjson
-		marshalledIndicators, _ := json.Marshal(indicators)
-		span.AddEvent("indicators", trace.WithAttributes(attribute.String("indicators", string(marshalledIndicators))))
-		metrics.EndSpanWithErr(span, err)
-	}()
-
-	riskIndicators, err := s.db.GetAddressIndicators(ctx, address, goodUntil)
-	if err == nil {
-		return riskIndicators, nil
-	}
-
-	if !errors.Is(err, db.ErrNoAddressNotCached) {
-		return nil, fmt.Errorf("could not get address indicators: %w", err)
-	}
-
-	response, err := s.client.ScreenAddress(ctx, address)
-	if err != nil {
-		return nil, fmt.Errorf("could not screen address: %w", err)
-	}
-
-	for _, ri := range response {
-		riskIndicators = append(riskIndicators, ri.AddressRiskIndicators...)
-	}
-
-	err = s.db.PutAddressIndicators(ctx, address, riskIndicators)
-	if err != nil {
-		return nil, fmt.Errorf("could not put address indicators: %w", err)
-	}
-
-	return riskIndicators, nil
 }

@@ -10,10 +10,14 @@ type Config struct {
 	AppID string `yaml:"app-id"`
 	// TRMKey is the api key for trmlabs
 	TRMKey string `yaml:"trm-key"`
+	// ChainalysisKey is the api key for chainalysis
+	ChainalysisKey string `yaml:"chainalysis-key"`
+	// ChainalysisURL is the url for chainalysis
+	ChainalysisURL string `yaml:"chainalysis-url"`
 	// Rules of [caller_type]->risk_type
 	Rulesets map[string]RulesetConfig `yaml:"rulesets"`
 	// BlacklistURL is the url to the blacklist file
-	// this is appplied to all rules and cannot be overridden
+	// this is applied to all rules and cannot be overridden
 	BlacklistURL string `yaml:"blacklist-url"`
 	// CacheTime is the time to cache results for (in seconds)
 	// can be overridden per rulesets
@@ -23,7 +27,7 @@ type Config struct {
 	// Database is the database configuration
 	Database DatabaseConfig `yaml:"database"`
 	// VolumeThresholds is the volume thresholds for each risk type
-	VolumeThresholds []VolumeThreshold `yaml:"volumeThresholds"`
+	// VolumeThresholds []VolumeThreshold `yaml:"volumeThresholds"`
 	// TODO: This HAS to be re-structured somehow
 	// Whitelist is a list of addresses to whitelist
 	Whitelist []string `yaml:"whitelist"`
