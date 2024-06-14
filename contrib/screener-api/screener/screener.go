@@ -15,12 +15,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 	"github.com/ipfs/go-log"
+	"github.com/synapsecns/sanguine/contrib/screener-api/chainalysis"
 	"github.com/synapsecns/sanguine/contrib/screener-api/client"
 	"github.com/synapsecns/sanguine/contrib/screener-api/config"
 	"github.com/synapsecns/sanguine/contrib/screener-api/db"
 	"github.com/synapsecns/sanguine/contrib/screener-api/db/sql"
 	"github.com/synapsecns/sanguine/contrib/screener-api/docs"
-	chainalysis "github.com/synapsecns/sanguine/contrib/screener-api/trmlabs"
 	"github.com/synapsecns/sanguine/core"
 	"github.com/synapsecns/sanguine/core/dbcommon"
 	"github.com/synapsecns/sanguine/core/ginhelper"
@@ -271,6 +271,7 @@ func (s *screenerImpl) retrieveRiskAssessment(c *gin.Context) {
 		return
 	}
 
+	// check to see if the address was not registered
 	var messageResponse map[string]string
 	if err := json.Unmarshal(bodyBytes, &messageResponse); err == nil {
 		if msg, ok := messageResponse["message"]; ok && msg == "not found" {
@@ -280,6 +281,7 @@ func (s *screenerImpl) retrieveRiskAssessment(c *gin.Context) {
 		}
 	}
 
+	// it was registered
 	var riskResponse chainalysis.Entity
 	err = json.NewDecoder(resp.Body).Decode(&riskResponse)
 	if err != nil {

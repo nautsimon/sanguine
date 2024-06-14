@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/synapsecns/sanguine/contrib/screener-api/chainalysis"
 	"github.com/synapsecns/sanguine/contrib/screener-api/config"
-	chainalysis "github.com/synapsecns/sanguine/contrib/screener-api/trmlabs"
 	"github.com/synapsecns/sanguine/core/metrics"
 )
 

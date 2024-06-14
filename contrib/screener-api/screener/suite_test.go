@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"testing"
 	"time"
 
@@ -13,12 +12,11 @@ import (
 	"github.com/phayes/freeport"
 	. "github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+	"github.com/synapsecns/sanguine/contrib/screener-api/chainalysis"
 	"github.com/synapsecns/sanguine/contrib/screener-api/client"
 	"github.com/synapsecns/sanguine/contrib/screener-api/config"
 	"github.com/synapsecns/sanguine/contrib/screener-api/metadata"
 	"github.com/synapsecns/sanguine/contrib/screener-api/screener"
-	"github.com/synapsecns/sanguine/contrib/screener-api/trmlabs"
-	chainalysis "github.com/synapsecns/sanguine/contrib/screener-api/trmlabs"
 	"github.com/synapsecns/sanguine/core"
 	"github.com/synapsecns/sanguine/core/dbcommon"
 	"github.com/synapsecns/sanguine/core/metrics"
@@ -81,28 +79,9 @@ func (s *ScreenerSuite) TestScreener() {
 	s.T().Setenv("TRM_URL", "")
 
 	cfg := config.Config{
-		AppSecret: "secret",
-		AppID:     "appid",
-		TRMKey:    "",
-		Rulesets: map[string]config.RulesetConfig{
-			"testrule": {
-				Filename: s.makeTestCSV([]screener.Set{
-					{
-						Enabled:    "true",
-						ID:         strconv.Itoa(1),
-						Category:   "test_category",
-						Name:       "name",
-						Severity:   "severity",
-						TypeOfRisk: "Risk Type",
-					},
-				}),
-			},
-			"testrule2": {
-				Filename: s.makeTestCSV([]screener.Set{}),
-			},
-		},
+		AppSecret:    "secret",
+		AppID:        "appid",
 		BlacklistURL: "https://synapseprotocol.com/blacklist.json", // TODO: mock this out
-		CacheTime:    1,
 		Port:         s.port,
 		Database: config.DatabaseConfig{
 			Type: dbcommon.Sqlite.String(),
@@ -197,11 +176,11 @@ func (s *ScreenerSuite) TestScreener() {
 }
 
 type mockClient struct {
-	responseMap map[string][]chainalysis.ScreenResponse
+	responseMap map[string][]chainalysis.Entity
 }
 
 // ScreenAddress mocks the screen address method.
-func (m mockClient) ScreenAddress(ctx context.Context, address string) ([]chainalysis.ScreenResponse, error) {
+func (m mockClient) ScreenAddress(ctx context.Context, address string) ([]chainalysis.Entity, error) {
 	if m.responseMap == nil {
 		return nil, fmt.Errorf("no response map")
 	}
