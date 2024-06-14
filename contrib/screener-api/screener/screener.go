@@ -62,7 +62,7 @@ func NewScreener(ctx context.Context, cfg config.Config, metricHandler metrics.H
 	docs.SwaggerInfo.Title = "Screener API"
 	docs.SwaggerInfo.Host = fmt.Sprintf("localhost:%d", cfg.Port)
 
-	screener.client, err = chainalysis.NewClient(cfg.TRMKey, core.GetEnv("TRM_URL", "https://api.trmlabs.com"))
+	screener.client, err = chainalysis.NewClient(cfg.ChainalysisKey, core.GetEnv("CHAINALYSIS_URL", cfg.ChainalysisURL))
 	if err != nil {
 		return nil, fmt.Errorf("could not create trm client: %w", err)
 	}
@@ -263,7 +263,24 @@ func (s *screenerImpl) retrieveRiskAssessment(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get risk assessment"})
 		return
 	}
-	var riskResponse chainalysis.ScreenResponse
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		logger.Errorf("could not read response body: %s", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not read response"})
+		return
+	}
+
+	var messageResponse map[string]string
+	if err := json.Unmarshal(bodyBytes, &messageResponse); err == nil {
+		if msg, ok := messageResponse["message"]; ok && msg == "not found" {
+			c.JSON(http.StatusOK, gin.H{"risk": false})
+			s.registerAddress(c)
+			return
+		}
+	}
+
+	var riskResponse chainalysis.Entity
 	err = json.NewDecoder(resp.Body).Decode(&riskResponse)
 	if err != nil {
 		logger.Errorf("could not decode risk assessment: %s", err)

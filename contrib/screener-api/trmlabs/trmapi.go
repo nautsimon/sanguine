@@ -8,7 +8,7 @@ import (
 
 // Client is the interface for the TRM Labs API client.
 type Client interface {
-	ScreenAddress(ctx context.Context, address string) ([]ScreenResponse, error)
+	ScreenAddress(ctx context.Context, address string) ([]Entity, error)
 }
 
 // clientImpl is the implementation of the TRM Labs API client.
@@ -33,19 +33,70 @@ func NewClient(apiKey, url string) (Client, error) {
 	}, nil
 }
 
-func (c *clientImpl) ScreenAddress(ctx context.Context, address string) ([]ScreenResponse, error) {
-	return nil, nil
+func (c *clientImpl) ScreenAddress(ctx context.Context, address string) ([]Entity, error) {
+	var result []Entity
+
+	_, err := c.client.R().
+		SetContext(ctx).
+		SetResult(&result).
+		Get("/v1/screen/address/" + address)
+	if err != nil {
+		return []Entity{}, err
+	}
+
+	return result, nil
+
 }
 
-type ScreenResponse struct {
-	Address    string `json:"address"`
-	Risk       string `json:"risk"`
-	RiskReason string `json:"riskReason"`
+func (c *clientImpl) RegisterAddress(ctx context.Context, address string) error {
+	_, err := c.client.R().
+		SetContext(ctx).
+		Get("/api/risk/v2/entities/" + address)
+	if err != nil {
+		return err
+	}
 
-	Exposures []struct {
-		Category string  `json:"category"`
-		Value    float64 `json:"value"`
-	} `json:"exposures"`
+	return nil
+}
+
+type Entity struct {
+	Address                string                  `json:"address"`
+	Risk                   string                  `json:"risk"`
+	RiskReason             string                  `json:"riskReason"`
+	Cluster                Cluster                 `json:"cluster"`
+	AddressIdentifications []AddressIdentification `json:"addressIdentifications"`
+	Exposures              []Exposure              `json:"exposures"`
+	Triggers               []Trigger               `json:"triggers"`
+	Status                 string                  `json:"status"`
+}
+
+type Cluster struct {
+	Name     string `json:"name"`
+	Category string `json:"category"`
+}
+
+type AddressIdentification struct {
+	Name        string `json:"name"`
+	Category    string `json:"category"`
+	Description string `json:"description"`
+}
+
+type Exposure struct {
+	Category string  `json:"category"`
+	Value    float64 `json:"value"`
+}
+
+type Trigger struct {
+	Category      string        `json:"category"`
+	Percentage    float64       `json:"percentage"`
+	Message       string        `json:"message"`
+	RuleTriggered RuleTriggered `json:"ruleTriggered"`
+}
+
+type RuleTriggered struct {
+	Risk         string  `json:"risk"`
+	MinThreshold float64 `json:"minThreshold"`
+	MaxThreshold float64 `json:"maxThreshold"`
 }
 
 // // ScreenResponse is the response from the screening endpoint.
