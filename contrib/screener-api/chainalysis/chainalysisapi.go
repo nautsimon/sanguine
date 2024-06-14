@@ -11,7 +11,7 @@ import (
 
 // Client is the interface for the Chainalysis API client.
 type Client interface {
-	ScreenAddress(ctx context.Context, address string) ([]Entity, error)
+	ScreenAddress(ctx context.Context, address string) (Entity, error)
 }
 
 // clientImpl is the implementation of the Chainalysis API client.
@@ -36,7 +36,7 @@ func NewClient(apiKey, url string) (Client, error) {
 	}, nil
 }
 
-func (c *clientImpl) ScreenAddress(ctx context.Context, address string) ([]Entity, error) {
+func (c *clientImpl) ScreenAddress(ctx context.Context, address string) (Entity, error) {
 
 	// Get the response.
 	resp, err := c.client.R().
@@ -44,22 +44,22 @@ func (c *clientImpl) ScreenAddress(ctx context.Context, address string) ([]Entit
 		SetBody(map[string]string{"address": address}).
 		Get("/api/risk/v2/entities")
 	if err != nil {
-		return []Entity{}, err
+		return Entity{}, err
 	}
 
 	// Response could differ based on if the address is registered or not.
 	var rawResponse map[string]interface{}
 	if err := json.Unmarshal(resp.Body(), &rawResponse); err != nil {
-		return []Entity{}, fmt.Errorf("could not unmarshal response: %w", err)
+		return Entity{}, fmt.Errorf("could not unmarshal response: %w", err)
 	}
 
-	var result []Entity
+	var result Entity
 	// User is not registed.
 	if _, ok := rawResponse["message"]; ok {
 		// So register it.
 		err = c.RegisterAddress(ctx, address)
 		if err != nil {
-			return []Entity{}, fmt.Errorf("could not register address: %w", err)
+			return Entity{}, fmt.Errorf("could not register address: %w", err)
 		}
 		// Then try again.
 		resp, err = c.client.R().
@@ -67,14 +67,14 @@ func (c *clientImpl) ScreenAddress(ctx context.Context, address string) ([]Entit
 			SetBody(map[string]string{"address": address}).
 			Get("/api/risk/v2/entities")
 		if err != nil {
-			return []Entity{}, err
+			return Entity{}, err
 		}
 		if err := json.Unmarshal(resp.Body(), &result); err != nil {
-			return []Entity{}, fmt.Errorf("could not unmarshal response: %w", err)
+			return Entity{}, fmt.Errorf("could not unmarshal response: %w", err)
 		}
 	} else {
 		if err := json.Unmarshal(resp.Body(), &result); err != nil {
-			return []Entity{}, fmt.Errorf("could not unmarshal response: %w", err)
+			return Entity{}, fmt.Errorf("could not unmarshal response: %w", err)
 		}
 	}
 
@@ -84,8 +84,8 @@ func (c *clientImpl) ScreenAddress(ctx context.Context, address string) ([]Entit
 func (c *clientImpl) RegisterAddress(ctx context.Context, address string) error {
 	if _, err := c.client.R().
 		SetContext(ctx).
-		SetBody(map[string]string{"address": address}).
-		Post("/api/risk/v2/entities/"); err != nil {
+		SetPathParams(map[string]string{"address": address}).
+		Post("/api/risk/v2/entities/{address}"); err != nil {
 		return err
 	}
 

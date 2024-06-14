@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -241,6 +242,13 @@ func (s *screenerImpl) retrieveRiskAssessment(c *gin.Context) {
 		return
 	}
 
+	// If the address is in the blacklist, return true.
+	if slices.Contains(s.blacklist, address) {
+		c.JSON(http.StatusOK, gin.H{"risk": true})
+		return
+	}
+
+	// If not, check request Chainalysis for the risk assessment.
 	req, err := http.NewRequest("GET", s.cfg.ChainalysisURL, nil)
 	if err != nil {
 		logger.Errorf("could not create risk assessment request: %s", err)
@@ -271,18 +279,19 @@ func (s *screenerImpl) retrieveRiskAssessment(c *gin.Context) {
 		return
 	}
 
-	// check to see if the address was not registered
-	var messageResponse map[string]string
+	var riskResponse chainalysis.Entity
+	// Check to see if the address was not registered. If so, register it and try again.
+	var messageResponse map[string]interface{}
 	if err := json.Unmarshal(bodyBytes, &messageResponse); err == nil {
 		if msg, ok := messageResponse["message"]; ok && msg == "not found" {
 			c.JSON(http.StatusOK, gin.H{"risk": false})
 			s.registerAddress(c)
 			return
 		}
+
 	}
 
 	// it was registered
-	var riskResponse chainalysis.Entity
 	err = json.NewDecoder(resp.Body).Decode(&riskResponse)
 	if err != nil {
 		logger.Errorf("could not decode risk assessment: %s", err)
