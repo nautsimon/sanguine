@@ -8,13 +8,13 @@ func init() {
 	namer := dbcommon.NewNamer(GetAllModels())
 
 	addressName = namer.GetConsistentName("Address")
-	riskName = namer.GetConsistentName("Risk")
-	riskReasonName = namer.GetConsistentName("RiskReason")
-	clusterName = namer.GetConsistentName("Cluster")
-	addressIdentificationsName = namer.GetConsistentName("AddressIdentifications")
-	exposuresName = namer.GetConsistentName("Exposures")
-	triggersName = namer.GetConsistentName("Triggers")
-	statusName = namer.GetConsistentName("Status")
+	// riskName = namer.GetConsistentName("Risk")
+	// riskReasonName = namer.GetConsistentName("RiskReason")
+	// clusterName = namer.GetConsistentName("Cluster")
+	// addressIdentificationsName = namer.GetConsistentName("AddressIdentifications")
+	// exposuresName = namer.GetConsistentName("Exposures")
+	// triggersName = namer.GetConsistentName("Triggers")
+	// statusName = namer.GetConsistentName("Status")
 
 	typeName = namer.GetConsistentName("Type")
 	idName = namer.GetConsistentName("ID")
@@ -25,14 +25,14 @@ func init() {
 }
 
 var (
-	addressName                string
-	riskName                   string
-	riskReasonName             string
-	clusterName                string
-	addressIdentificationsName string
-	exposuresName              string
-	triggersName               string
-	statusName                 string
+	addressName string
+	// 	riskName                   string
+	// 	riskReasonName             string
+	// 	clusterName                string
+	// 	addressIdentificationsName string
+	// 	exposuresName              string
+	// 	triggersName               string
+	// 	statusName                 string
 
 	typeName    string
 	idName      string

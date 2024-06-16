@@ -52,7 +52,7 @@ func (c clientImpl) ScreenAddress(ctx context.Context, address string) (bool, er
 	resp, err := c.rClient.R().
 		SetContext(ctx).
 		SetResult(&blockedRes).
-		Get(fmt.Sprintf("/%s/address/%s", address))
+		Get(fmt.Sprintf("/%s", address))
 	if err != nil {
 		return false, fmt.Errorf("error from server: %s: %w", resp.Status(), err)
 	}
@@ -67,7 +67,7 @@ func (c clientImpl) ScreenAddress(ctx context.Context, address string) (bool, er
 func (c clientImpl) RegisterAddress(ctx context.Context, address string) error {
 	resp, err := c.rClient.R().
 		SetContext(ctx).
-		Get(fmt.Sprintf("/%s/register/%s", address))
+		Get(fmt.Sprintf("/%s", address))
 	if err != nil {
 		return fmt.Errorf("error from server: %s: %w", resp.Status(), err)
 	}

@@ -87,9 +87,6 @@ func NewScreener(ctx context.Context, cfg config.Config, metricHandler metrics.H
 	screener.router = ginhelper.New(logger)
 	screener.router.Use(screener.metrics.Gin())
 
-	// remove this
-	// screener.router.Handle(http.MethodGet, "/:ruleset/address/:address", screener.screenAddress)
-
 	screener.router.Handle(http.MethodPost, "/:address", screener.registerAddress)
 	screener.router.Handle(http.MethodGet, "/:address", screener.screenAddress)
 
@@ -150,68 +147,6 @@ func (s *screenerImpl) fetchBlacklist(ctx context.Context) {
 	}
 }
 
-// screenAddress returns whether an address is risky or not given a ruleset.
-// @Summary Screen address for risk
-// @Description Assess the risk associated with a given address using specified rulesets.
-// @Tags address
-// @Accept  json
-// @Produce  json
-// @Param ruleset query string true "Ruleset to use for screening the address"
-// @Param address query string true "Address to be screened"
-// @Success 200 {object} map[string]bool "Returns the risk assessment result"
-// @Failure 400 {object} map[string]string "Returns error if the required parameters are missing or invalid"
-// @Failure 500 {object} map[string]string "Returns error if there are problems processing the indicators"
-// @Router /screen/{ruleset}/{address} [get].
-//func (s *screenerImpl) screenAddress(c *gin.Context) {
-//	var err error
-//
-//	address := strings.ToLower(c.Param("address"))
-//	if address == "" {
-//		c.JSON(http.StatusBadRequest, gin.H{"error": "address is required"})
-//		return
-//	}
-//
-//	s.blacklistMux.RLock()
-//	if slices.Contains(s.blacklist, address) {
-//		c.JSON(http.StatusOK, gin.H{"risk": true})
-//		s.blacklistMux.RUnlock()
-//		return
-//	}
-//	s.blacklistMux.RUnlock()
-//
-//	if slices.Contains(s.whitelist, address) {
-//		c.JSON(http.StatusOK, gin.H{"risk": false})
-//		return
-//	}
-//
-//	ctx, span := s.metrics.Tracer().Start(c.Request.Context(), "screenAddress", trace.WithAttributes(attribute.String("address", address)))
-//	defer func() {
-//		metrics.EndSpanWithErr(span, err)
-//	}()
-//
-//	currentRules := s.rulesManager.GetRuleset(ruleset)
-//	if currentRules == nil {
-//		c.JSON(http.StatusBadRequest, gin.H{"error": "ruleset not found"})
-//		return
-//	}
-//
-//	goodUntil := time.Now().Add(-1 * s.cfg.GetCacheTime(ruleset))
-//	var indicators []trmlabs.AddressRiskIndicator
-//	if indicators, err = s.getIndicators(ctx, address, goodUntil); err != nil {
-//		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-//		return
-//	}
-//
-//	var hasIndicator bool
-//	if hasIndicator, err = currentRules.HasAddressIndicators(s.thresholds, indicators...); err != nil {
-//		c.JSON(http.StatusOK, gin.H{"risk": true})
-//		return
-//	}
-//
-//	c.JSON(http.StatusOK, gin.H{"risk": hasIndicator})
-//
-//}
-
 func (s *screenerImpl) registerAddress(c *gin.Context) {
 	address := strings.ToLower(c.Param("address"))
 	if address == "" {
@@ -249,7 +184,7 @@ func (s *screenerImpl) screenAddress(c *gin.Context) {
 	}
 
 	// If not, check request Chainalysis for the risk assessment.
-	req, err := http.NewRequest("GET", s.cfg.ChainalysisURL, nil)
+	req, err := http.NewRequest("GET", s.cfg.ChainalysisURL+address, nil)
 	if err != nil {
 		logger.Errorf("could not create risk assessment request: %s", err)
 		return
@@ -284,8 +219,36 @@ func (s *screenerImpl) screenAddress(c *gin.Context) {
 	var messageResponse map[string]interface{}
 	if err := json.Unmarshal(bodyBytes, &messageResponse); err == nil {
 		if msg, ok := messageResponse["message"]; ok && msg == "not found" {
-			c.JSON(http.StatusOK, gin.H{"risk": false})
 			s.registerAddress(c)
+			resp, err = http.DefaultClient.Do(req)
+			if err != nil {
+				logger.Errorf("could not get risk assessment: %s", err)
+			}
+			defer func() {
+				_ = resp.Body.Close()
+			}()
+
+			if resp.StatusCode != http.StatusOK {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get risk assessment"})
+			}
+
+			bodyBytes, err = io.ReadAll(resp.Body)
+			if err != nil {
+				logger.Errorf("could not read response body: %s", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "could not read response"})
+			}
+
+			err = json.Unmarshal(bodyBytes, &riskResponse)
+			if err != nil {
+				logger.Errorf("could not decode risk assessment: %s", err)
+			}
+
+			if riskResponse.Risk == "severe" {
+				c.JSON(http.StatusOK, gin.H{"risk": true})
+			} else {
+				c.JSON(http.StatusOK, gin.H{"risk": false})
+			}
+
 			return
 		}
 
