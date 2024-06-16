@@ -91,7 +91,7 @@ func NewScreener(ctx context.Context, cfg config.Config, metricHandler metrics.H
 	// screener.router.Handle(http.MethodGet, "/:ruleset/address/:address", screener.screenAddress)
 
 	screener.router.Handle(http.MethodPost, "/:address", screener.registerAddress)
-	screener.router.Handle(http.MethodGet, "/:address", screener.retrieveRiskAssessment)
+	screener.router.Handle(http.MethodGet, "/:address", screener.screenAddress)
 
 	screener.router.Handle(http.MethodPost, "/api/data/sync", screener.authMiddleware(cfg), screener.blacklistAddress)
 	screener.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
@@ -235,7 +235,7 @@ func (s *screenerImpl) registerAddress(c *gin.Context) {
 
 }
 
-func (s *screenerImpl) retrieveRiskAssessment(c *gin.Context) {
+func (s *screenerImpl) screenAddress(c *gin.Context) {
 	address := strings.ToLower(c.Param("address"))
 	if address == "" {
 		logger.Errorf("address is required")

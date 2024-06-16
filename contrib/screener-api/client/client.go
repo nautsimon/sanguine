@@ -20,7 +20,8 @@ import (
 
 // ScreenerClient is an interface for the Screener API.
 type ScreenerClient interface {
-	ScreenAddress(ctx context.Context, ruleset, address string) (blocked bool, err error)
+	ScreenAddress(ctx context.Context, address string) (blocked bool, err error)
+	RegisterAddress(ctx context.Context, address string) (err error)
 	BlacklistAddress(ctx context.Context, appsecret string, appid string, body BlackListBody) (string, error)
 }
 
@@ -46,12 +47,12 @@ type blockedResponse struct {
 }
 
 // ScreenAddress checks if an address is blocked by the screener.
-func (c clientImpl) ScreenAddress(ctx context.Context, ruleset, address string) (bool, error) {
+func (c clientImpl) ScreenAddress(ctx context.Context, address string) (bool, error) {
 	var blockedRes blockedResponse
 	resp, err := c.rClient.R().
 		SetContext(ctx).
 		SetResult(&blockedRes).
-		Get(fmt.Sprintf("/%s/address/%s", ruleset, address))
+		Get(fmt.Sprintf("/%s/address/%s", address))
 	if err != nil {
 		return false, fmt.Errorf("error from server: %s: %w", resp.Status(), err)
 	}
@@ -63,20 +64,19 @@ func (c clientImpl) ScreenAddress(ctx context.Context, ruleset, address string) 
 	return blockedRes.Blocked, nil
 }
 
-// BlackListBody is the json payload that represents a blacklisted address.
-type BlackListBody struct {
-	Type    string `json:"type"`
-	ID      string `json:"id"`
-	Data    string `json:"data"`
-	Address string `json:"address"`
-	Network string `json:"network"`
-	Tag     string `json:"tag"`
-	Remark  string `json:"remark"`
-}
+func (c clientImpl) RegisterAddress(ctx context.Context, address string) error {
+	resp, err := c.rClient.R().
+		SetContext(ctx).
+		Get(fmt.Sprintf("/%s/register/%s", address))
+	if err != nil {
+		return fmt.Errorf("error from server: %s: %w", resp.Status(), err)
+	}
 
-type blacklistResponse struct {
-	Status string `json:"status"`
-	Error  string `json:"error"`
+	if resp.IsError() {
+		return fmt.Errorf("error from server: %s", resp.Status())
+	}
+
+	return nil
 }
 
 func (c clientImpl) BlacklistAddress(ctx context.Context, appsecret string, appid string, body BlackListBody) (string, error) {
@@ -119,6 +119,22 @@ func (c clientImpl) BlacklistAddress(ctx context.Context, appsecret string, appi
 	return blacklistRes.Status, nil
 }
 
+// BlackListBody is the json payload that represents a blacklisted address.
+type BlackListBody struct {
+	Type    string `json:"type"`
+	ID      string `json:"id"`
+	Data    string `json:"data"`
+	Address string `json:"address"`
+	Network string `json:"network"`
+	Tag     string `json:"tag"`
+	Remark  string `json:"remark"`
+}
+
+type blacklistResponse struct {
+	Status string `json:"status"`
+	Error  string `json:"error"`
+}
+
 // GenerateSignature generates a signature for the request.
 func GenerateSignature(
 	secret,
@@ -138,8 +154,12 @@ func NewNoOpClient() (ScreenerClient, error) {
 
 type noOpClient struct{}
 
-func (n noOpClient) ScreenAddress(_ context.Context, _, _ string) (bool, error) {
+func (n noOpClient) ScreenAddress(_ context.Context, _ string) (bool, error) {
 	return false, nil
+}
+
+func (n noOpClient) RegisterAddress(_ context.Context, _ string) error {
+	return nil
 }
 
 func (n noOpClient) BlacklistAddress(_ context.Context, _ string, _ string, _ BlackListBody) (string, error) {

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Flaque/filet"
-	"github.com/gocarina/gocsv"
 	"github.com/phayes/freeport"
 	. "github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -58,18 +57,6 @@ func (s *ScreenerSuite) SetupSuite() {
 	Nil(s.T(), err)
 }
 
-func (s *ScreenerSuite) makeTestCSV(rules []screener.Set) string {
-	content, err := gocsv.MarshalString(rules)
-	Nil(s.T(), err)
-
-	file := filet.TmpFile(s.T(), "", content)
-	defer func() {
-		// _ = Nil(s.T(), file.Close())
-	}()
-
-	return file.Name()
-}
-
 func (s *ScreenerSuite) TestScreener() {
 	var err error
 
@@ -100,19 +87,56 @@ func (s *ScreenerSuite) TestScreener() {
 	}()
 
 	m := mockClient{
-		responseMap: map[string][]trmlabs.ScreenResponse{
+		entityMap: map[string]*chainalysis.Entity{
 			"0x123": {
-				{
-					AddressRiskIndicators: []trmlabs.AddressRiskIndicator{
-						{
-							Category:                    "test_category",
-							CategoryID:                  "1",
-							CategoryRiskScoreLevel:      1,
-							CategoryRiskScoreLevelLabel: "test_category",
-							IncomingVolumeUsd:           "1",
+				Address:    "0x123",
+				Risk:       "low",
+				RiskReason: "none",
+				Cluster:    chainalysis.Cluster{Name: "Cluster A", Category: "Category 1"},
+				AddressIdentifications: []chainalysis.AddressIdentification{
+					{
+						Name:        "Name A",
+						Category:    "Category A",
+						Description: "Description A",
+					},
+				},
+				Exposures: []chainalysis.Exposure{{Category: "Exposure A", Value: 100.0}},
+				Triggers: []chainalysis.Trigger{
+					{
+						Category:      "Trigger A",
+						Percentage:    0.1,
+						Message:       "Message A",
+						RuleTriggered: chainalysis.RuleTriggered{Risk: "low", MinThreshold: 0.0, MaxThreshold: 1.0},
+					},
+				},
+				Status: "active",
+			},
+			"0x456": {
+				Address:    "0x456",
+				Risk:       "high",
+				RiskReason: "fraud",
+				Cluster:    chainalysis.Cluster{Name: "Cluster B", Category: "Category 2"},
+				AddressIdentifications: []chainalysis.AddressIdentification{
+					{
+						Name:        "Name B",
+						Category:    "Category B",
+						Description: "Description B",
+					},
+				},
+				Exposures: []chainalysis.Exposure{{Category: "Exposure B", Value: 200.0}},
+				Triggers: []chainalysis.Trigger{
+					{
+						Category:   "Trigger B",
+						Percentage: 0.2,
+						Message:    "Message B",
+						RuleTriggered: chainalysis.RuleTriggered{
+							Risk:         "high",
+							MinThreshold: 1.0,
+							MaxThreshold: 2.0,
 						},
 					},
 				},
+				Status: "inactive",
 			},
 		},
 	}
@@ -124,12 +148,12 @@ func (s *ScreenerSuite) TestScreener() {
 	Nil(s.T(), err)
 
 	// http://localhost:63575/testrule/address/0x123: true
-	out, err := apiClient.ScreenAddress(s.GetTestContext(), "testrule", "0x123")
+	out, err := apiClient.ScreenAddress(s.GetTestContext(), "0x123")
 	Nil(s.T(), err)
 	True(s.T(), out)
 
 	// http://localhost:63575/testrule/address/0x00: false
-	out, err = apiClient.ScreenAddress(s.GetTestContext(), "testrule", "0x00")
+	out, err = apiClient.ScreenAddress(s.GetTestContext(), "0x00")
 	Nil(s.T(), err)
 	False(s.T(), out)
 
@@ -176,16 +200,16 @@ func (s *ScreenerSuite) TestScreener() {
 }
 
 type mockClient struct {
-	responseMap map[string][]chainalysis.Entity
+	entityMap map[string]*chainalysis.Entity
 }
 
 // ScreenAddress mocks the screen address method.
-func (m mockClient) ScreenAddress(ctx context.Context, address string) ([]chainalysis.Entity, error) {
-	if m.responseMap == nil {
+func (m mockClient) ScreenAddress(ctx context.Context, address string) (*chainalysis.Entity, error) {
+	if m.entityMap == nil {
 		return nil, fmt.Errorf("no response map")
 	}
 
-	return m.responseMap[address], nil
+	return m.entityMap[address], nil
 }
 
 var _ chainalysis.Client = mockClient{}
