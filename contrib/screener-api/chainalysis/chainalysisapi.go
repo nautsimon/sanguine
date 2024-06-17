@@ -9,9 +9,10 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
-// Client is the interface for the Chainalysis API client.
+// Client is the interface for the Chainalysis API client. It makes requests to the Chainalysis API.
 type Client interface {
-	ScreenAddress(ctx context.Context, address string) (*Entity, error)
+	ScreenAddress(ctx context.Context, address string) (bool, error)
+	RegisterAddress(ctx context.Context, address string) error
 }
 
 // clientImpl is the implementation of the Chainalysis API client.
@@ -36,49 +37,52 @@ func NewClient(apiKey, url string) (Client, error) {
 	}, nil
 }
 
-// ScreenAddress screens an address.
-func (c *clientImpl) ScreenAddress(ctx context.Context, address string) (*Entity, error) {
+// ScreenAddress screens an address from the Chainalysis API.
+func (c *clientImpl) ScreenAddress(ctx context.Context, address string) (bool, error) {
 	// Get the response.
 	resp, err := c.client.R().
 		SetContext(ctx).
 		SetBody(map[string]string{"address": address}).
 		Get("/api/risk/v2/entities")
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 
 	// Response could differ based on if the address is registered or not.
 	var rawResponse map[string]interface{}
 	if err := json.Unmarshal(resp.Body(), &rawResponse); err != nil {
-		return nil, fmt.Errorf("could not unmarshal response: %w", err)
+		return false, fmt.Errorf("could not unmarshal response: %w", err)
 	}
 
 	var result Entity
 	// User is not registed.
 	if _, ok := rawResponse["message"]; ok {
 		// So register it.
-		err = c.RegisterAddress(ctx, address)
-		if err != nil {
-			return nil, fmt.Errorf("could not register address: %w", err)
+		if err = c.RegisterAddress(ctx, address); err != nil {
+			return false, fmt.Errorf("could not register address: %w", err)
 		}
+
 		// Then try again.
 		resp, err = c.client.R().
 			SetContext(ctx).
 			SetBody(map[string]string{"address": address}).
 			Get("/api/risk/v2/entities")
 		if err != nil {
-			return nil, err
+			return false, err
 		}
 		if err := json.Unmarshal(resp.Body(), &result); err != nil {
-			return nil, fmt.Errorf("could not unmarshal response: %w", err)
+			return false, fmt.Errorf("could not unmarshal response: %w", err)
 		}
 	} else {
 		if err := json.Unmarshal(resp.Body(), &result); err != nil {
-			return nil, fmt.Errorf("could not unmarshal response: %w", err)
+			return false, fmt.Errorf("could not unmarshal response: %w", err)
 		}
 	}
+	if result.Risk == "severe" {
+		return true, nil
+	}
 
-	return &result, nil
+	return false, nil
 }
 
 // RegisterAddress registers an address.
@@ -86,7 +90,7 @@ func (c *clientImpl) RegisterAddress(ctx context.Context, address string) error 
 	if _, err := c.client.R().
 		SetContext(ctx).
 		SetPathParams(map[string]string{"address": address}).
-		Post("/api/risk/v2/entities/{address}"); err != nil {
+		Post("/api/risk/v2/entities/"); err != nil {
 		return err
 	}
 

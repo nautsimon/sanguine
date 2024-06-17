@@ -66,10 +66,11 @@ func (s *ScreenerSuite) TestScreener() {
 	s.T().Setenv("TRM_URL", "")
 
 	cfg := config.Config{
-		AppSecret:    "secret",
-		AppID:        "appid",
-		BlacklistURL: "https://synapseprotocol.com/blacklist.json", // TODO: mock this out
-		Port:         s.port,
+		AppSecret:      "secret",
+		AppID:          "appid",
+		BlacklistURL:   "https://synapseprotocol.com/blacklist.json", // TODO: mock this out
+		ChainalysisURL: "https://api.chainalysis.com",
+		Port:           s.port,
 		Database: config.DatabaseConfig{
 			Type: dbcommon.Sqlite.String(),
 			DSN:  filet.TmpDir(s.T(), ""),
@@ -90,7 +91,7 @@ func (s *ScreenerSuite) TestScreener() {
 		entityMap: map[string]*chainalysis.Entity{
 			"0x123": {
 				Address:    "0x123",
-				Risk:       "low",
+				Risk:       "severe",
 				RiskReason: "none",
 				Cluster:    chainalysis.Cluster{Name: "Cluster A", Category: "Category 1"},
 				AddressIdentifications: []chainalysis.AddressIdentification{
@@ -113,7 +114,7 @@ func (s *ScreenerSuite) TestScreener() {
 			},
 			"0x456": {
 				Address:    "0x456",
-				Risk:       "high",
+				Risk:       "severe",
 				RiskReason: "fraud",
 				Cluster:    chainalysis.Cluster{Name: "Cluster B", Category: "Category 2"},
 				AddressIdentifications: []chainalysis.AddressIdentification{
@@ -147,8 +148,12 @@ func (s *ScreenerSuite) TestScreener() {
 	apiClient, err := client.NewClient(s.metrics, fmt.Sprintf("http://localhost:%d", s.port))
 	Nil(s.T(), err)
 
-	// http://localhost:63575/testrule/address/0x123: true
+	// http://localhost:63575/v2/entities/0x123: true
 	out, err := apiClient.ScreenAddress(s.GetTestContext(), "0x123")
+	Nil(s.T(), err)
+	True(s.T(), out)
+
+	out, err = apiClient.ScreenAddress(s.GetTestContext(), "0x456")
 	Nil(s.T(), err)
 	True(s.T(), out)
 
@@ -170,7 +175,6 @@ func (s *ScreenerSuite) TestScreener() {
 
 	// post to the blacklist
 	status, err := apiClient.BlacklistAddress(s.GetTestContext(), cfg.AppSecret, cfg.AppID, blacklistBody)
-	fmt.Println(status)
 	Equal(s.T(), "success", status)
 	Nil(s.T(), err)
 
@@ -179,7 +183,6 @@ func (s *ScreenerSuite) TestScreener() {
 	blacklistBody.Remark = "new remark"
 
 	status, err = apiClient.BlacklistAddress(s.GetTestContext(), cfg.AppSecret, cfg.AppID, blacklistBody)
-	fmt.Println(status)
 	Equal(s.T(), "success", status)
 	Nil(s.T(), err)
 
@@ -188,13 +191,11 @@ func (s *ScreenerSuite) TestScreener() {
 	blacklistBody.ID = "1"
 
 	status, err = apiClient.BlacklistAddress(s.GetTestContext(), cfg.AppSecret, cfg.AppID, blacklistBody)
-	fmt.Println(status)
 	Equal(s.T(), "success", status)
 	Nil(s.T(), err)
 
 	// unauthorized
 	status, err = apiClient.BlacklistAddress(s.GetTestContext(), "bad", cfg.AppID, blacklistBody)
-	fmt.Println(status)
 	NotEqual(s.T(), "success", status)
 	NotNil(s.T(), err)
 }
@@ -204,12 +205,52 @@ type mockClient struct {
 }
 
 // ScreenAddress mocks the screen address method.
-func (m mockClient) ScreenAddress(ctx context.Context, address string) (*chainalysis.Entity, error) {
+func (m mockClient) ScreenAddress(ctx context.Context, address string) (bool, error) {
 	if m.entityMap == nil {
-		return nil, fmt.Errorf("no response map")
+		return false, fmt.Errorf("no response map")
+	}
+	entity, ok := m.entityMap[address]
+	if !ok {
+		err := m.RegisterAddress(ctx, address)
+		if err != nil {
+			return false, fmt.Errorf("could not register address: %w", err)
+		}
+		entity = m.entityMap[address]
 	}
 
-	return m.entityMap[address], nil
+	if entity.Risk == "severe" {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// RegisterAddress mocks the register address method.
+func (m mockClient) RegisterAddress(ctx context.Context, address string) error {
+	m.entityMap[address] = &chainalysis.Entity{
+		Address:    address,
+		Risk:       "low",
+		RiskReason: "none",
+		Cluster:    chainalysis.Cluster{Name: "Cluster A", Category: "Category 1"},
+		AddressIdentifications: []chainalysis.AddressIdentification{
+			{
+				Name:        "Name A",
+				Category:    "Category A",
+				Description: "Description A",
+			},
+		},
+		Exposures: []chainalysis.Exposure{{Category: "Exposure A", Value: 100.0}},
+		Triggers: []chainalysis.Trigger{
+			{
+				Category:      "Trigger A",
+				Percentage:    0.1,
+				Message:       "Message A",
+				RuleTriggered: chainalysis.RuleTriggered{Risk: "low", MinThreshold: 0.0, MaxThreshold: 1.0},
+			},
+		},
+		Status: "active",
+	}
+	return nil
 }
 
 var _ chainalysis.Client = mockClient{}

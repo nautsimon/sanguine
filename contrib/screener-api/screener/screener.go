@@ -2,13 +2,11 @@
 package screener
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -40,15 +38,16 @@ type Screener interface {
 }
 
 type screenerImpl struct {
-	db           db.DB
-	router       *gin.Engine
-	metrics      metrics.Handler
-	cfg          config.Config
-	client       chainalysis.Client
-	blacklist    []string
-	blacklistMux sync.RWMutex
-	whitelist    []string
-	entityCache  []string
+	db      db.DB
+	router  *gin.Engine
+	metrics metrics.Handler
+	cfg     config.Config
+	client  chainalysis.Client
+	// blacklist      []string
+	// blacklistMux   sync.RWMutex
+	whitelist         []string
+	blacklistCache    map[string]bool
+	blacklistCacheMux sync.RWMutex
 }
 
 var logger = log.Logger("screener")
@@ -68,6 +67,8 @@ func NewScreener(ctx context.Context, cfg config.Config, metricHandler metrics.H
 		return nil, fmt.Errorf("could not create trm client: %w", err)
 	}
 
+	screener.blacklistCache = make(map[string]bool)
+
 	for _, item := range cfg.Whitelist {
 		screener.whitelist = append(screener.whitelist, strings.ToLower(item))
 	}
@@ -81,8 +82,6 @@ func NewScreener(ctx context.Context, cfg config.Config, metricHandler metrics.H
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to rules db: %w", err)
 	}
-
-	screener.entityCache = make([]string, 100_000)
 
 	screener.router = ginhelper.New(logger)
 	screener.router.Use(screener.metrics.Gin())
@@ -139,11 +138,17 @@ func (s *screenerImpl) fetchBlacklist(ctx context.Context) {
 		return
 	}
 
-	s.blacklistMux.Lock()
-	defer s.blacklistMux.Unlock()
+	// s.blacklistMux.Lock()
+	// defer s.blacklistMux.Unlock()
 
+	// for _, item := range blacklist {
+	// 	s.blacklist = append(s.blacklist, strings.ToLower(item))
+	// }
+
+	s.blacklistCacheMux.Lock()
+	defer s.blacklistCacheMux.Unlock()
 	for _, item := range blacklist {
-		s.blacklist = append(s.blacklist, strings.ToLower(item))
+		s.blacklistCache[item] = true
 	}
 }
 
@@ -154,20 +159,19 @@ func (s *screenerImpl) registerAddress(c *gin.Context) {
 		return
 	}
 
-	req, err := http.NewRequest("POST", s.cfg.ChainalysisURL, bytes.NewBuffer([]byte(address)))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create request"})
+	if res := s.client.RegisterAddress(c.Request.Context(), address); res != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": res.Error()})
+		return
 	}
 
-	req.Header.Set("Token", s.cfg.ChainalysisKey)
-	req.Header.Set("Content-Type", "application/json")
+	// s.blacklistMux.Lock()
+	// defer s.blacklistMux.Unlock()
+	// s.blacklist = append(s.blacklist, address)
+	s.blacklistCacheMux.Lock()
+	defer s.blacklistCacheMux.Unlock()
+	s.blacklistCache[address] = true
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not send request"})
-	}
-	defer resp.Body.Close()
-
+	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
 
 func (s *screenerImpl) screenAddress(c *gin.Context) {
@@ -178,97 +182,36 @@ func (s *screenerImpl) screenAddress(c *gin.Context) {
 	}
 
 	// If the address is in the blacklist, return true.
-	if slices.Contains(s.blacklist, address) {
+	// if slices.Contains(s.blacklist, address) {
+	// 	c.JSON(http.StatusOK, gin.H{"risk": true})
+	// 	return
+	// }
+	if _, ok := s.blacklistCache[address]; ok {
 		c.JSON(http.StatusOK, gin.H{"risk": true})
 		return
 	}
 
 	// If not, check request Chainalysis for the risk assessment.
-	req, err := http.NewRequest("GET", s.cfg.ChainalysisURL+address, nil)
+	blocked, err := s.client.ScreenAddress(c.Request.Context(), address)
 	if err != nil {
-		logger.Errorf("could not create risk assessment request: %s", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	req.Header.Set("Token", s.cfg.ChainalysisKey)
-	req.Header.Set("Content-Type", "application/json")
+	if blocked {
+		// s.blacklistMux.Lock()
+		// defer s.blacklistMux.Unlock()
+		// s.blacklist = append(s.blacklist, address)
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		logger.Errorf("could not get risk assessment: %s", err)
-		return
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
+		s.blacklistCacheMux.Lock()
+		defer s.blacklistCacheMux.Unlock()
+		s.blacklistCache[address] = true
 
-	if resp.StatusCode != http.StatusOK {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get risk assessment"})
-		return
-	}
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		logger.Errorf("could not read response body: %s", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not read response"})
-		return
-	}
-
-	var riskResponse chainalysis.Entity
-	// Check to see if the address was not registered. If so, register it and try again.
-	var messageResponse map[string]interface{}
-	if err := json.Unmarshal(bodyBytes, &messageResponse); err == nil {
-		if msg, ok := messageResponse["message"]; ok && msg == "not found" {
-			s.registerAddress(c)
-			resp, err = http.DefaultClient.Do(req)
-			if err != nil {
-				logger.Errorf("could not get risk assessment: %s", err)
-			}
-			defer func() {
-				_ = resp.Body.Close()
-			}()
-
-			if resp.StatusCode != http.StatusOK {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get risk assessment"})
-			}
-
-			bodyBytes, err = io.ReadAll(resp.Body)
-			if err != nil {
-				logger.Errorf("could not read response body: %s", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "could not read response"})
-			}
-
-			err = json.Unmarshal(bodyBytes, &riskResponse)
-			if err != nil {
-				logger.Errorf("could not decode risk assessment: %s", err)
-			}
-
-			if riskResponse.Risk == "severe" {
-				c.JSON(http.StatusOK, gin.H{"risk": true})
-			} else {
-				c.JSON(http.StatusOK, gin.H{"risk": false})
-			}
-
-			return
-		}
-
-	}
-
-	// it was registered
-	err = json.NewDecoder(resp.Body).Decode(&riskResponse)
-	if err != nil {
-		logger.Errorf("could not decode risk assessment: %s", err)
-		return
-	}
-
-	if riskResponse.Risk == "severe" {
 		c.JSON(http.StatusOK, gin.H{"risk": true})
 		return
-	} else {
-		c.JSON(http.StatusOK, gin.H{"risk": false})
-		return
 	}
 
+	c.JSON(http.StatusOK, gin.H{"risk": false})
 }
 
 // @dev Protected Method
@@ -315,6 +258,11 @@ func (s *screenerImpl) blacklistAddress(c *gin.Context) {
 		Remark:  blacklistBody.Remark,
 		Address: strings.ToLower(blacklistBody.Address),
 	}
+
+	s.blacklistCacheMux.Lock()
+	defer s.blacklistCacheMux.Unlock()
+	s.blacklistCache[blacklistBody.Address] = true
+	// s.blacklist = append(s.blacklist, blacklistBody.Address)
 
 	switch blacklistBody.Type {
 	case "create":

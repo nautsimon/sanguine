@@ -46,28 +46,38 @@ type blockedResponse struct {
 	Blocked bool `json:"risk"`
 }
 
-// ScreenAddress checks if an address is blocked by the screener.
+type notFoundResponse struct {
+	Message string `json:"message"`
+}
+
+// ScreenAddress checks if an address is blocked by the screener API.
 func (c clientImpl) ScreenAddress(ctx context.Context, address string) (bool, error) {
 	var blockedRes blockedResponse
 	resp, err := c.rClient.R().
 		SetContext(ctx).
 		SetResult(&blockedRes).
-		Get(fmt.Sprintf("/%s", address))
+		Get("/" + address)
 	if err != nil {
-		return false, fmt.Errorf("error from server: %s: %w", resp.Status(), err)
+		return false, fmt.Errorf("you are gay: %s: %w", resp.Status(), err)
 	}
 
 	if resp.IsError() {
-		return false, fmt.Errorf("error from server: %s", resp.Status())
+		// The address was not found
+		if err := json.Unmarshal(resp.Body(), &notFoundResponse{}); err == nil {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("you are retarded: %s and also %w", resp, err)
 	}
 
 	return blockedRes.Blocked, nil
 }
 
+// RegisterAddress registers an address with the screener API.
 func (c clientImpl) RegisterAddress(ctx context.Context, address string) error {
 	resp, err := c.rClient.R().
 		SetContext(ctx).
-		Get(fmt.Sprintf("/%s", address))
+		Post("/" + address)
 	if err != nil {
 		return fmt.Errorf("error from server: %s: %w", resp.Status(), err)
 	}
@@ -79,6 +89,7 @@ func (c clientImpl) RegisterAddress(ctx context.Context, address string) error {
 	return nil
 }
 
+// BlacklistAddress blacklists an address with the screener API.
 func (c clientImpl) BlacklistAddress(ctx context.Context, appsecret string, appid string, body BlackListBody) (string, error) {
 	var blacklistRes blacklistResponse
 
