@@ -62,11 +62,10 @@ func NewScreener(ctx context.Context, cfg config.Config, metricHandler metrics.H
 
 	screener.client, err = chainalysis.NewClient(cfg.ChainalysisKey, core.GetEnv("CHAINALYSIS_URL", cfg.ChainalysisURL))
 	if err != nil {
-		return nil, fmt.Errorf("could not create trm client: %w", err)
+		return nil, fmt.Errorf("could not create Chainalysis client: %w", err)
 	}
 
 	screener.blacklistCache = make(map[string]bool)
-
 	for _, item := range cfg.Whitelist {
 		screener.whitelist = append(screener.whitelist, strings.ToLower(item))
 	}
@@ -75,7 +74,6 @@ func NewScreener(ctx context.Context, cfg config.Config, metricHandler metrics.H
 	if err != nil {
 		return nil, fmt.Errorf("could not get db type: %w", err)
 	}
-
 	screener.db, err = sql.Connect(ctx, dbType, cfg.Database.DSN, metricHandler)
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to rules db: %w", err)
@@ -84,9 +82,8 @@ func NewScreener(ctx context.Context, cfg config.Config, metricHandler metrics.H
 	screener.router = ginhelper.New(logger)
 	screener.router.Use(screener.metrics.Gin())
 
-	screener.router.Handle(http.MethodGet, "/:address", screener.screenAddress)
-
-	screener.router.Handle(http.MethodPost, "/api/data/sync", screener.authMiddleware(cfg), screener.blacklistAddress)
+	screener.router.POST("/api/data/sync", screener.authMiddleware(cfg), screener.blacklistAddress)
+	screener.router.GET("/:address", screener.screenAddress)
 	screener.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
 
 	return &screener, nil

@@ -66,9 +66,8 @@ func (c clientImpl) handleResponse(ctx context.Context, address string, resp *re
 	}
 
 	var result Entity
-	// User is not registered.
+	// User is not registered so register it.
 	if _, ok := rawResponse["message"]; ok {
-		// So register it.
 		if err = c.registerAddress(ctx, address); err != nil {
 			return false, fmt.Errorf("could not register address: %w", err)
 		}
@@ -86,11 +85,8 @@ func (c clientImpl) handleResponse(ctx context.Context, address string, resp *re
 	if err := json.Unmarshal(resp.Body(), &result); err != nil {
 		return false, fmt.Errorf("could not unmarshal response: %w", err)
 	}
-	if result.Risk == "severe" {
-		return true, nil
-	}
 
-	return false, nil
+	return result.Risk == "severe", nil
 }
 
 // registerAddress registers an address in the case that we try and screen for a nonexistent address.
