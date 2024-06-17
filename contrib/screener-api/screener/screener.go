@@ -144,6 +144,16 @@ func (s *screenerImpl) fetchBlacklist(ctx context.Context) {
 	}
 }
 
+// screenAddress godoc
+// @Summary Screen an address for risk
+// @Description Screen an address using Chainalysis API to determine if it's high risk
+// @Tags Address Screening
+// @Accept  json
+// @Produce  json
+// @Param   address path string true "Address to be screened"
+// @Accept json
+// @Produce json
+// @Router /screen/{address} [get]
 func (s *screenerImpl) screenAddress(c *gin.Context) {
 	address := strings.ToLower(c.Param("address"))
 	if address == "" {
