@@ -18,14 +18,6 @@ func init() {
 
 var (
 	addressName string
-	// 	riskName                   string
-	// 	riskReasonName             string
-	// 	clusterName                string
-	// 	addressIdentificationsName string
-	// 	exposuresName              string
-	// 	triggersName               string
-	// 	statusName                 string
-
 	typeName    string
 	idName      string
 	dataName    string
