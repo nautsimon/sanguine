@@ -191,9 +191,7 @@ func (s *screenerImpl) screenAddress(c *gin.Context) {
 func (s *screenerImpl) blacklistAddress(c *gin.Context) {
 	var err error
 	ctx, span := s.metrics.Tracer().Start(c.Request.Context(), "blacklistAddress")
-	defer func() {
-		metrics.EndSpanWithErr(span, err)
-	}()
+	defer metrics.EndSpanWithErr(span, err)
 
 	var blacklistBody client.BlackListBody
 
@@ -224,7 +222,6 @@ func (s *screenerImpl) blacklistAddress(c *gin.Context) {
 	s.blacklistCacheMux.Lock()
 	defer s.blacklistCacheMux.Unlock()
 	s.blacklistCache[blacklistBody.Address] = true
-	// s.blacklist = append(s.blacklist, blacklistBody.Address)
 
 	switch blacklistBody.Type {
 	case "create":
@@ -300,16 +297,22 @@ func (s *screenerImpl) authMiddleware(cfg config.Config) gin.HandlerFunc {
 
 		expectedSignature := client.GenerateSignature(cfg.AppSecret, message)
 
-		span.AddEvent("generated_signature", trace.WithAttributes(attribute.String("expectedSignature", expectedSignature)))
+		span.AddEvent(
+			"generated_signature",
+			trace.WithAttributes(attribute.String("expectedSignature", expectedSignature)),
+		)
 
 		if expectedSignature != signature {
-			span.AddEvent("error", trace.WithAttributes(attribute.String("error", "Invalid signature")))
+			span.AddEvent(
+				"error",
+				trace.WithAttributes(attribute.String("error", "Invalid signature")),
+			)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid signature"})
 			c.Abort()
 			return
 		}
-
 		span.AddEvent("signature_validated")
+
 		c.Next()
 	}
 }
