@@ -97,7 +97,7 @@ func (c clientImpl) handleResponse(ctx context.Context, address string, resp *re
 func (c *clientImpl) registerAddress(ctx context.Context, address string) error {
 	if _, err := c.client.R().
 		SetContext(ctx).
-		SetPathParams(map[string]string{"address": address}).
+		SetBody(map[string]interface{}{"address": address}).
 		Post(EntityEndpoint); err != nil {
 		return err
 	}
