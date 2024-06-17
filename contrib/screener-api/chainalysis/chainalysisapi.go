@@ -67,7 +67,7 @@ func (c clientImpl) handleResponse(ctx context.Context, address string, resp *re
 
 	var result Entity
 	// User is not registered so register it.
-	if _, ok := rawResponse["message"]; ok {
+	if userNotRegistered(rawResponse) {
 		if err = c.registerAddress(ctx, address); err != nil {
 			return false, fmt.Errorf("could not register address: %w", err)
 		}
@@ -91,9 +91,12 @@ func (c clientImpl) handleResponse(ctx context.Context, address string, resp *re
 
 // registerAddress registers an address in the case that we try and screen for a nonexistent address.
 func (c *clientImpl) registerAddress(ctx context.Context, address string) error {
+	payload := map[string]interface{}{
+		"address": address,
+	}
 	if _, err := c.client.R().
 		SetContext(ctx).
-		SetBody(map[string]interface{}{"address": address}).
+		SetBody(payload).
 		Post(EntityEndpoint); err != nil {
 		return fmt.Errorf("could not register address: %w", err)
 	}
@@ -148,3 +151,8 @@ type RuleTriggered struct {
 }
 
 var _ Client = &clientImpl{}
+
+func userNotRegistered(rawResponse map[string]interface{}) bool {
+	_, ok := rawResponse["message"]
+	return ok
+}
