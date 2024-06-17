@@ -12,14 +12,14 @@ type Entity struct {
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 
-	Address                string                              `gorm:"column:address" json:"address"`
-	Risk                   string                              `gorm:"column:risk"    json:"risk"`
-	RiskReason             string                              `gorm:"column:riskReason" json:"riskReason"`
-	Cluster                chainalysis.Cluster                 `gorm:"column:cluster" json:"cluster"`
+	Address                string                              `gorm:"column:address"                json:"address"`
+	Risk                   string                              `gorm:"column:risk"                   json:"risk"`
+	RiskReason             string                              `gorm:"column:riskReason"             json:"riskReason"`
+	Cluster                chainalysis.Cluster                 `gorm:"column:cluster"                json:"cluster"`
 	AddressIdentifications []chainalysis.AddressIdentification `gorm:"column:addressIdentifications" json:"addressIdentifications"`
-	Exposures              []chainalysis.Exposure              `gorm:"column:exposures" json:"exposures"`
-	Triggers               []chainalysis.Trigger               `gorm:"column:triggers" json:"triggers"`
-	Status                 string                              `gorm:"column:status" json:"status"`
+	Exposures              []chainalysis.Exposure              `gorm:"column:exposures"              json:"exposures"`
+	Triggers               []chainalysis.Trigger               `gorm:"column:triggers"               json:"triggers"`
+	Status                 string                              `gorm:"column:status"                 json:"status"`
 }
 
 // BlacklistedAddress is a blacklisted address.

@@ -49,7 +49,7 @@ func (c *clientImpl) ScreenAddress(ctx context.Context, address string) (bool, e
 		SetPathParam("address", address).
 		Get(EntityEndpoint)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("could not get response: %w", err)
 	}
 
 	return c.handleResponse(ctx, address, resp)
@@ -66,7 +66,7 @@ func (c clientImpl) handleResponse(ctx context.Context, address string, resp *re
 	}
 
 	var result Entity
-	// User is not registed.
+	// User is not registered.
 	if _, ok := rawResponse["message"]; ok {
 		// So register it.
 		if err = c.registerAddress(ctx, address); err != nil {
@@ -79,7 +79,7 @@ func (c clientImpl) handleResponse(ctx context.Context, address string, resp *re
 			SetContext(ctx).
 			SetPathParam("address", address).
 			Get(EntityEndpoint); err != nil {
-			return false, err
+			return false, fmt.Errorf("could not get response: %w", err)
 		}
 	}
 
@@ -99,12 +99,13 @@ func (c *clientImpl) registerAddress(ctx context.Context, address string) error 
 		SetContext(ctx).
 		SetBody(map[string]interface{}{"address": address}).
 		Post(EntityEndpoint); err != nil {
-		return err
+		return fmt.Errorf("could not register address: %w", err)
 	}
 
 	return nil
 }
 
+// Entity is a struct that represents an entity in the Chainalysis API.
 type Entity struct {
 	Address                string                  `json:"address"`
 	Risk                   string                  `json:"risk"`
@@ -116,22 +117,26 @@ type Entity struct {
 	Status                 string                  `json:"status"`
 }
 
+// Cluster is a struct that represents a cluster in the Chainalysis API.
 type Cluster struct {
 	Name     string `json:"name"`
 	Category string `json:"category"`
 }
 
+// AddressIdentification is a struct that represents an address identification in the Chainalysis API.
 type AddressIdentification struct {
 	Name        string `json:"name"`
 	Category    string `json:"category"`
 	Description string `json:"description"`
 }
 
+// Exposure is a struct that represents an exposure in the Chainalysis API.
 type Exposure struct {
 	Category string  `json:"category"`
 	Value    float64 `json:"value"`
 }
 
+// Trigger is a struct that represents a trigger in the Chainalysis API.
 type Trigger struct {
 	Category      string        `json:"category"`
 	Percentage    float64       `json:"percentage"`
@@ -139,6 +144,7 @@ type Trigger struct {
 	RuleTriggered RuleTriggered `json:"ruleTriggered"`
 }
 
+// RuleTriggered is a struct that represents a rule triggered in the Chainalysis API.
 type RuleTriggered struct {
 	Risk         string  `json:"risk"`
 	MinThreshold float64 `json:"minThreshold"`

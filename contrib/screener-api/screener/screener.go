@@ -128,7 +128,9 @@ func (s *screenerImpl) fetchBlacklist(ctx context.Context) {
 		logger.Errorf("could not fetch blacklist: %s", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	var blacklist []string
 	err = json.NewDecoder(resp.Body).Decode(&blacklist)
@@ -153,7 +155,7 @@ func (s *screenerImpl) fetchBlacklist(ctx context.Context) {
 // @Param   address path string true "Address to be screened"
 // @Accept json
 // @Produce json
-// @Router /screen/{address} [get]
+// @Router /screen/{address} [get].
 func (s *screenerImpl) screenAddress(c *gin.Context) {
 	address := strings.ToLower(c.Param("address"))
 	if address == "" {
