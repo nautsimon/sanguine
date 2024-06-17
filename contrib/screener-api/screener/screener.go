@@ -258,7 +258,6 @@ func (s *screenerImpl) blacklistAddress(c *gin.Context) {
 		return
 
 	default:
-		span.AddEvent("error", trace.WithAttributes(attribute.String("error", err.Error())))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid type"})
 		return
 	}
