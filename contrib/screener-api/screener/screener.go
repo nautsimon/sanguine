@@ -38,13 +38,11 @@ type Screener interface {
 }
 
 type screenerImpl struct {
-	db      db.DB
-	router  *gin.Engine
-	metrics metrics.Handler
-	cfg     config.Config
-	client  chainalysis.Client
-	// blacklist      []string
-	// blacklistMux   sync.RWMutex
+	db                db.DB
+	router            *gin.Engine
+	metrics           metrics.Handler
+	cfg               config.Config
+	client            chainalysis.Client
 	whitelist         []string
 	blacklistCache    map[string]bool
 	blacklistCacheMux sync.RWMutex
@@ -86,7 +84,6 @@ func NewScreener(ctx context.Context, cfg config.Config, metricHandler metrics.H
 	screener.router = ginhelper.New(logger)
 	screener.router.Use(screener.metrics.Gin())
 
-	screener.router.Handle(http.MethodPost, "/:address", screener.registerAddress)
 	screener.router.Handle(http.MethodGet, "/:address", screener.screenAddress)
 
 	screener.router.Handle(http.MethodPost, "/api/data/sync", screener.authMiddleware(cfg), screener.blacklistAddress)
@@ -102,7 +99,7 @@ func (s *screenerImpl) Start(ctx context.Context) error {
 		for {
 			if s.cfg.BlacklistURL != "" {
 				s.fetchBlacklist(ctx)
-				time.Sleep(1 * time.Second * 15)
+				time.Sleep(time.Second * 15)
 			}
 		}
 	}()
@@ -115,7 +112,12 @@ func (s *screenerImpl) Start(ctx context.Context) error {
 }
 
 func (s *screenerImpl) fetchBlacklist(ctx context.Context) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.cfg.BlacklistURL, nil)
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		s.cfg.BlacklistURL,
+		nil,
+	)
 	if err != nil {
 		logger.Errorf("could not create blacklist request: %s", err)
 		return
@@ -126,10 +128,7 @@ func (s *screenerImpl) fetchBlacklist(ctx context.Context) {
 		logger.Errorf("could not fetch blacklist: %s", err)
 		return
 	}
-
-	defer func() {
-		_ = resp.Body.Close()
-	}()
+	defer resp.Body.Close()
 
 	var blacklist []string
 	err = json.NewDecoder(resp.Body).Decode(&blacklist)
@@ -138,40 +137,11 @@ func (s *screenerImpl) fetchBlacklist(ctx context.Context) {
 		return
 	}
 
-	// s.blacklistMux.Lock()
-	// defer s.blacklistMux.Unlock()
-
-	// for _, item := range blacklist {
-	// 	s.blacklist = append(s.blacklist, strings.ToLower(item))
-	// }
-
 	s.blacklistCacheMux.Lock()
 	defer s.blacklistCacheMux.Unlock()
 	for _, item := range blacklist {
 		s.blacklistCache[item] = true
 	}
-}
-
-func (s *screenerImpl) registerAddress(c *gin.Context) {
-	address := strings.ToLower(c.Param("address"))
-	if address == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "address is required"})
-		return
-	}
-
-	if res := s.client.RegisterAddress(c.Request.Context(), address); res != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": res.Error()})
-		return
-	}
-
-	// s.blacklistMux.Lock()
-	// defer s.blacklistMux.Unlock()
-	// s.blacklist = append(s.blacklist, address)
-	s.blacklistCacheMux.Lock()
-	defer s.blacklistCacheMux.Unlock()
-	s.blacklistCache[address] = true
-
-	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
 
 func (s *screenerImpl) screenAddress(c *gin.Context) {
@@ -181,11 +151,7 @@ func (s *screenerImpl) screenAddress(c *gin.Context) {
 		return
 	}
 
-	// If the address is in the blacklist, return true.
-	// if slices.Contains(s.blacklist, address) {
-	// 	c.JSON(http.StatusOK, gin.H{"risk": true})
-	// 	return
-	// }
+	// Check if the address is in the blacklist.
 	if _, ok := s.blacklistCache[address]; ok {
 		c.JSON(http.StatusOK, gin.H{"risk": true})
 		return
@@ -199,10 +165,6 @@ func (s *screenerImpl) screenAddress(c *gin.Context) {
 	}
 
 	if blocked {
-		// s.blacklistMux.Lock()
-		// defer s.blacklistMux.Unlock()
-		// s.blacklist = append(s.blacklist, address)
-
 		s.blacklistCacheMux.Lock()
 		defer s.blacklistCacheMux.Unlock()
 		s.blacklistCache[address] = true

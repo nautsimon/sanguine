@@ -12,7 +12,6 @@ import (
 // Client is the interface for the Chainalysis API client. It makes requests to the Chainalysis API.
 type Client interface {
 	ScreenAddress(ctx context.Context, address string) (bool, error)
-	RegisterAddress(ctx context.Context, address string) error
 }
 
 // clientImpl is the implementation of the Chainalysis API client.
@@ -58,7 +57,7 @@ func (c *clientImpl) ScreenAddress(ctx context.Context, address string) (bool, e
 	// User is not registed.
 	if _, ok := rawResponse["message"]; ok {
 		// So register it.
-		if err = c.RegisterAddress(ctx, address); err != nil {
+		if err = c.registerAddress(ctx, address); err != nil {
 			return false, fmt.Errorf("could not register address: %w", err)
 		}
 
@@ -86,7 +85,7 @@ func (c *clientImpl) ScreenAddress(ctx context.Context, address string) (bool, e
 }
 
 // RegisterAddress registers an address.
-func (c *clientImpl) RegisterAddress(ctx context.Context, address string) error {
+func (c *clientImpl) registerAddress(ctx context.Context, address string) error {
 	if _, err := c.client.R().
 		SetContext(ctx).
 		SetPathParams(map[string]string{"address": address}).

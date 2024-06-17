@@ -21,7 +21,6 @@ import (
 // ScreenerClient is an interface for the Screener API.
 type ScreenerClient interface {
 	ScreenAddress(ctx context.Context, address string) (blocked bool, err error)
-	RegisterAddress(ctx context.Context, address string) (err error)
 	BlacklistAddress(ctx context.Context, appsecret string, appid string, body BlackListBody) (string, error)
 }
 
@@ -58,7 +57,7 @@ func (c clientImpl) ScreenAddress(ctx context.Context, address string) (bool, er
 		SetResult(&blockedRes).
 		Get("/" + address)
 	if err != nil {
-		return false, fmt.Errorf("you are gay: %s: %w", resp.Status(), err)
+		return false, fmt.Errorf("error from server: %s: %w", resp.Status(), err)
 	}
 
 	if resp.IsError() {
@@ -67,26 +66,10 @@ func (c clientImpl) ScreenAddress(ctx context.Context, address string) (bool, er
 			return false, nil
 		}
 
-		return false, fmt.Errorf("you are retarded: %s and also %w", resp, err)
+		return false, fmt.Errorf("error from server: %s %w", resp, err)
 	}
 
 	return blockedRes.Blocked, nil
-}
-
-// RegisterAddress registers an address with the screener API.
-func (c clientImpl) RegisterAddress(ctx context.Context, address string) error {
-	resp, err := c.rClient.R().
-		SetContext(ctx).
-		Post("/" + address)
-	if err != nil {
-		return fmt.Errorf("error from server: %s: %w", resp.Status(), err)
-	}
-
-	if resp.IsError() {
-		return fmt.Errorf("error from server: %s", resp.Status())
-	}
-
-	return nil
 }
 
 // BlacklistAddress blacklists an address with the screener API.
