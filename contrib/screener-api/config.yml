@@ -1,0 +1,26 @@
+trm-key: '4b4fc908-4e8a-4aa9-a49a-500be2fcee18'
+app-secret: '6AEEC898AE5CB6262AC691CFB6C83'
+app-id: 'EE2E42725F1464F1AA6F6216624E3'
+chainalysis-key: e10231756537de13edd89c59a99d23483dc6b23043133ba0ed6a3f9498cd1940
+chainalysis-url: 'https://api.chainalysis.com'
+blacklist-url: 'https://raw.githubusercontent.com/synapsecns/sanguine/master/packages/synapse-interface/public/blacklist.json'
+port: 5080
+database:
+  type: sqlite
+  dsn: /tmp/screener
+severities:
+  - 'severe'
+  - 'high'
+whitelist:
+  - '0x537bf75de19f3d229e3a9018EE1A23c0c9C7D39C'
+  - '0x54372e2b338C4bE299B75CB54D914822dB32A63F'
+  - '0x28aa4F9ffe21365473B64C161b566C3CdeAD0108'
+  - '0x69b8a24edc9053b3d007710e7b986df40a0bc7eb'
+  - '0x92002dEac42E663D2C57A9d4e191FED4d27304a7'
+  - '0xD3fdC98D610349f5C94D9C341D878403721C7D34'
+  - '0x0CA9A4BaBD517Ea94D50D028a52db28F1B444825'
+  - '0xAFb60A1cb7733a41d1E88319b4b78B47dd5C32C5'
+  - '0x90C0Bf8D71369d21F8ADDF0Da33D21DcB0B1C384'
+  - '0xb9f686e51038a6f05ae7d8d18ae8f1d4c7f6dcf0'
+  - '0xB9AFb68de4E1f89acA813ca75d87bd86a1a17aa3'
+  - '0x34c9c2E48F43DacE5192002c0d1C3C40EdF463Bd'
