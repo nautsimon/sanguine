@@ -161,7 +161,7 @@ func (s *screenerImpl) screenAddress(c *gin.Context) {
 	}
 
 	// Check if the address is in the blacklist.
-	if _, ok := s.blacklistCache[address]; ok {
+	if blocked, ok := s.blacklistCache[address]; ok && blocked {
 		c.JSON(http.StatusOK, gin.H{"risk": true})
 		return
 	}
@@ -180,9 +180,13 @@ func (s *screenerImpl) screenAddress(c *gin.Context) {
 
 		c.JSON(http.StatusOK, gin.H{"risk": true})
 		return
-	}
+	} else {
+		s.blacklistCacheMux.Lock()
+		defer s.blacklistCacheMux.Unlock()
+		s.blacklistCache[address] = false
 
-	c.JSON(http.StatusOK, gin.H{"risk": false})
+		c.JSON(http.StatusOK, gin.H{"risk": false})
+	}
 }
 
 // @dev Protected Method

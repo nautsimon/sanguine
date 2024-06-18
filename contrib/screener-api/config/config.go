@@ -17,6 +17,8 @@ type Config struct {
 	Port int `yaml:"port"`
 	// Database is the database configuration
 	Database DatabaseConfig `yaml:"database"`
+	// Severities are the severity levels for each address we want to screen
+	Severities []string `yaml:"severities"`
 	// VolumeThresholds is the volume thresholds for each risk type
 	// VolumeThresholds []VolumeThreshold `yaml:"volumeThresholds"`
 	// TODO: This HAS to be re-structured somehow

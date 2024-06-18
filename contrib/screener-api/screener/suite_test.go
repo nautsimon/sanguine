@@ -75,6 +75,7 @@ func (s *ScreenerSuite) TestScreener() {
 			Type: dbcommon.Sqlite.String(),
 			DSN:  filet.TmpDir(s.T(), ""),
 		},
+		Severities: []string{"Severe", "High"},
 	}
 
 	realScreener, err := screener.NewTestScreener(s.GetTestContext(), cfg, s.metrics)
@@ -91,7 +92,7 @@ func (s *ScreenerSuite) TestScreener() {
 		entityMap: map[string]*chainalysis.Entity{
 			"0x123": {
 				Address:    "0x123",
-				Risk:       "severe",
+				Risk:       "Severe",
 				RiskReason: "none",
 				Cluster:    chainalysis.Cluster{Name: "Cluster A", Category: "Category 1"},
 				AddressIdentifications: []chainalysis.AddressIdentification{
@@ -114,7 +115,7 @@ func (s *ScreenerSuite) TestScreener() {
 			},
 			"0x456": {
 				Address:    "0x456",
-				Risk:       "severe",
+				Risk:       "Severe",
 				RiskReason: "fraud",
 				Cluster:    chainalysis.Cluster{Name: "Cluster B", Category: "Category 2"},
 				AddressIdentifications: []chainalysis.AddressIdentification{
@@ -156,6 +157,11 @@ func (s *ScreenerSuite) TestScreener() {
 	out, err = apiClient.ScreenAddress(s.GetTestContext(), "0x456")
 	Nil(s.T(), err)
 	True(s.T(), out)
+
+	// http://localhost:63575/testrule/address/0x00: false
+	out, err = apiClient.ScreenAddress(s.GetTestContext(), "0x00")
+	Nil(s.T(), err)
+	False(s.T(), out)
 
 	// http://localhost:63575/testrule/address/0x00: false
 	out, err = apiClient.ScreenAddress(s.GetTestContext(), "0x00")
@@ -218,7 +224,7 @@ func (m mockClient) ScreenAddress(ctx context.Context, address string) (bool, er
 		entity = m.entityMap[address]
 	}
 
-	if entity.Risk == "severe" {
+	if entity.Risk == "Severe" {
 		return true, nil
 	}
 
