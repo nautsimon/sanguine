@@ -180,13 +180,12 @@ func (s *screenerImpl) screenAddress(c *gin.Context) {
 
 		c.JSON(http.StatusOK, gin.H{"risk": true})
 		return
-	} else {
-		s.blacklistCacheMux.Lock()
-		defer s.blacklistCacheMux.Unlock()
-		s.blacklistCache[address] = false
-
-		c.JSON(http.StatusOK, gin.H{"risk": false})
 	}
+	s.blacklistCacheMux.Lock()
+	defer s.blacklistCacheMux.Unlock()
+	s.blacklistCache[address] = false
+
+	c.JSON(http.StatusOK, gin.H{"risk": false})
 }
 
 // @dev Protected Method
