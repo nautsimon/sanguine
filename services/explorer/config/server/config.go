@@ -27,6 +27,8 @@ type Config struct {
 	RPCURL string `yaml:"rpc_url"`
 	// BridgeConfigAddress is the address of BridgeConfig contract.
 	BridgeConfigAddress string `yaml:"bridge_config_address"`
+	// RFQAPIURL is the URL of the RFQ API.
+	RFQAPIURL string `yaml:"rfq_api_url"`
 	// BridgeConfigChainID is the ChainID of BridgeConfig contract.
 	BridgeConfigChainID uint32 `yaml:"bridge_config_chain_id"`
 	// SwapTopicHash is the hash of the swap topic.
@@ -64,6 +66,8 @@ type ContractsConfig struct {
 // IsValid makes sure the config is valid.
 func (c *Config) IsValid() error {
 	switch {
+	case c.RFQAPIURL == "":
+		return fmt.Errorf("rfq_api_url, %w", config.ErrRequiredGlobalField)
 	case c.ScribeURL == "":
 		return fmt.Errorf("scribe_url, %w", config.ErrRequiredGlobalField)
 	case c.RPCURL == "":

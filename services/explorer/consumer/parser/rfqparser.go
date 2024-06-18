@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math/big"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	model "github.com/synapsecns/sanguine/services/explorer/db/sql"
 	bridgeTypes "github.com/synapsecns/sanguine/services/explorer/types/bridge"
 	rfqTypes "github.com/synapsecns/sanguine/services/explorer/types/fastbridge"
+	apiModel "github.com/synapsecns/sanguine/services/rfq/api/model"
 )
 
 const ethCoinGeckoID = "ethereum"
@@ -43,8 +45,13 @@ type RFQParser struct {
 	fromAPI bool
 }
 
+// RFQAPIQuoter is the interface for getting all quotes.
+type RFQAPIQuoter interface {
+	GetAllQuotes(ctx context.Context) ([]*apiModel.GetQuoteResponse, error)
+}
+
 // NewRFQParser creates a new RFQParser.
-func NewRFQParser(consumerDB db.ConsumerDB, rfqAddress common.Address, consumerFetcher fetcher.ScribeFetcher, rfqService fetcher.RFQService, tokenDataService tokendata.Service, tokenPriceService tokenprice.Service, fromAPI bool) (*RFQParser, error) {
+func NewRFQParser(consumerDB db.ConsumerDB, rfqAddress common.Address, consumerFetcher fetcher.ScribeFetcher, rfqService fetcher.RFQService, tokenDataService tokendata.Service, tokenPriceService tokenprice.Service, fromAPI bool, quoter RFQAPIQuoter) (*RFQParser, error) {
 	filterer, err := fastbridge.NewFastBridgeFilterer(rfqAddress, nil)
 	if err != nil {
 		return nil, fmt.Errorf("could not create %T: %w", fastbridge.FastBridgeFilterer{}, err)
@@ -99,6 +106,12 @@ func (p *RFQParser) ParseLog(log ethTypes.Log, chainID uint32) (*model.RFQEvent,
 	return &rfqEvent, iFace, nil
 }
 
+// check the api to see if the token is quoteable
+func (p *RFQParser) isQuoteableToken(ctx context.Context, tokenAddress string, chainID *big.Int) bool {
+	p.rfqService.GetTokenSymbol()
+
+}
+
 // MatureLogs takes a rfq event and adds data to them.
 func (p *RFQParser) MatureLogs(ctx context.Context, rfqEvent *model.RFQEvent, iFace rfqTypes.EventLog, chainID uint32) (interface{}, error) {
 	// Get timestamp from consumer
@@ -121,6 +134,9 @@ func (p *RFQParser) MatureLogs(ctx context.Context, rfqEvent *model.RFQEvent, iF
 		*rfqEvent.TokenDecimal = 18
 		curCoinGeckoID = ethCoinGeckoID
 	} else {
+		if p.isQuoteableToken(ctx, rfqEvent.OriginToken, rfqEvent.OriginChainID) && p.isQuoteableToken(ctx, rfqEvent.DestinationToken, rfqEvent.DestinationChainID) {
+
+		}
 		// Assuming any other token is USDC
 		rfqEvent.TokenSymbol = "USDC"
 		rfqEvent.TokenDecimal = new(uint8)

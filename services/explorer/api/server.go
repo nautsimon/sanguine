@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	rfqAPIClient "github.com/synapsecns/sanguine/services/rfq/api/client"
 	"net"
 	"time"
 
@@ -125,7 +126,13 @@ func createParsers(ctx context.Context, db db.ConsumerDB, fetcher fetcherpkg.Scr
 				return nil, nil, nil, fmt.Errorf("could not create fast bridge ref: %w", err)
 			}
 			fastbridgeRefs[chain.ChainID] = fastBridgeRef
-			rfqParser, err := parser.NewRFQParser(db, common.HexToAddress(chain.Contracts.RFQ), fetcher, rfqService, tokenDataService, priceDataService, true)
+
+			rfqClient, err := rfqAPIClient.NewUnauthenticatedClient(metrics.NewNullHandler(), config.RFQAPIURL)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("could not create rfq client: %w", err)
+			}
+
+			rfqParser, err := parser.NewRFQParser(db, common.HexToAddress(chain.Contracts.RFQ), fetcher, rfqService, tokenDataService, priceDataService, true, rfqClient)
 			if err != nil {
 				return nil, nil, nil, fmt.Errorf("could not create fast bridge parser: %w", err)
 			}

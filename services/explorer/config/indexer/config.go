@@ -68,6 +68,8 @@ type Config struct {
 	BridgeConfigAddress string `yaml:"bridge_config_address"`
 	// BridgeConfigChainID is the ChainID of BridgeConfig contract.
 	BridgeConfigChainID uint32 `yaml:"bridge_config_chain_id"`
+	// RFQAPIURL is the URL of the RFQ API.
+	RFQAPIURL string `yaml:"rfq_api_url"`
 	// Chains stores the chain configurations.
 	Chains []ChainConfig `yaml:"chains"`
 }
@@ -109,6 +111,8 @@ func (c *Config) IsValid() error {
 		return fmt.Errorf("rpc_url, %w", config.ErrRequiredGlobalField)
 	case c.BridgeConfigChainID == 0:
 		return fmt.Errorf("chain_id cannot be 0")
+	case c.RFQAPIURL == "":
+		return fmt.Errorf("rfq_api_url, %w", config.ErrRequiredGlobalField)
 	}
 	if len(c.BridgeConfigAddress) != (common.AddressLength*2)+2 {
 		return fmt.Errorf("field Address: %w", config.ErrAddressLength)
@@ -180,6 +184,7 @@ func DecodeConfig(filePath string) (cfg Config, err error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("could not unmarshall config %s: %w", ellipsis.Shorten(string(input), 30), err)
 	}
+
 	err = cfg.IsValid()
 	if err != nil {
 		return cfg, err

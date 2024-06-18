@@ -255,7 +255,8 @@ func (t *tokenDataServiceImpl) retrieveCCTPTokenData(parentCtx context.Context, 
 	ctx, cancel := context.WithTimeout(parentCtx, maxAttemptTime)
 	defer cancel()
 	err := retry.WithBackoff(ctx, func(ctx context.Context) error {
-		symbol, err := cctpService.GetTokenSymbol(ctx, tokenAddress)
+		symbol, err := cctpService.
+			GetTokenSymbol(ctx, tokenAddress)
 		if err != nil {
 			return fmt.Errorf("could not get cctp token: %w", err)
 		}

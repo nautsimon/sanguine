@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"fmt"
+	"github.com/synapsecns/sanguine/services/rfq/api/client"
 	"net/http"
 	"time"
 
@@ -69,9 +70,14 @@ func NewExplorerBackfiller(consumerDB db.ConsumerDB, config indexerConfig.Config
 		return nil, fmt.Errorf("could not create token data service: %w", err)
 	}
 
+	rfqClient, err := client.NewUnauthenticatedClient(handler, config.RFQAPIURL)
+	if err != nil {
+		return nil, fmt.Errorf("could not create RFQ client: %w", err)
+	}
+
 	// Initialize each chain backfiller.
 	for _, chainConfig := range config.Chains {
-		chainBackfiller, err := getChainBackfiller(consumerDB, chainConfig, fetcher, clients[chainConfig.ChainID], tokenDataService, priceDataService)
+		chainBackfiller, err := getChainBackfiller(consumerDB, chainConfig, fetcher, clients[chainConfig.ChainID], tokenDataService, priceDataService, rfqClient)
 		if err != nil {
 			return nil, fmt.Errorf("could not get chain backfiller: %w", err)
 		}
@@ -121,7 +127,7 @@ func (e ExplorerBackfiller) Backfill(ctx context.Context, livefill bool) error {
 }
 
 // nolint gocognit,cyclop
-func getChainBackfiller(consumerDB db.ConsumerDB, chainConfig indexerConfig.ChainConfig, fetcher fetcherpkg.ScribeFetcher, client bind.ContractBackend, tokenDataService tokendata.Service, priceDataService tokenprice.Service) (*backfill.ChainBackfiller, error) {
+func getChainBackfiller(consumerDB db.ConsumerDB, chainConfig indexerConfig.ChainConfig, fetcher fetcherpkg.ScribeFetcher, client bind.ContractBackend, tokenDataService tokendata.Service, priceDataService tokenprice.Service, rfqQuoter parser.RFQAPIQuoter) (*backfill.ChainBackfiller, error) {
 	var err error
 	var bridgeParser *parser.BridgeParser
 	var messageBusParser *parser.MessageBusParser
@@ -183,7 +189,7 @@ func getChainBackfiller(consumerDB db.ConsumerDB, chainConfig indexerConfig.Chai
 			if err != nil || rfqService == nil {
 				return nil, fmt.Errorf("could not create rfqService: %w", err)
 			}
-			rfqParser, err = parser.NewRFQParser(consumerDB, common.HexToAddress(chainConfig.Contracts[i].Address), fetcher, rfqService, tokenDataService, priceDataService, false)
+			rfqParser, err = parser.NewRFQParser(consumerDB, common.HexToAddress(chainConfig.Contracts[i].Address), fetcher, rfqService, tokenDataService, priceDataService, false, rfqQuoter)
 			if err != nil || rfqParser == nil {
 				return nil, fmt.Errorf("could not create message bus parser: %w", err)
 			}
