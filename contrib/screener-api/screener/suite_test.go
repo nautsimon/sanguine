@@ -179,6 +179,11 @@ func (s *ScreenerSuite) TestScreener() {
 	status, err = apiClient.BlacklistAddress(s.GetTestContext(), "bad", cfg.AppID, blacklistBody)
 	NotEqual(s.T(), "success", status)
 	NotNil(s.T(), err)
+
+	c := chainalysis.NewClient([]string{"Severe", "High"}, "key", "url")
+	NotNil(s.T(), c)
+
+	c.ScreenAddress(s.GetTestContext(), "0x123")
 }
 
 type mockClient struct {

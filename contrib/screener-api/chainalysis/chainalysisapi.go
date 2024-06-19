@@ -29,7 +29,7 @@ type clientImpl struct {
 }
 
 // NewClient creates a new Chainalysis API client.
-func NewClient(riskLevels []string, apiKey, url string) (Client, error) {
+func NewClient(riskLevels []string, apiKey, url string) Client {
 	client := resty.New().
 		SetBaseURL(url).
 		SetHeader("Content-Type", "application/json").
@@ -41,7 +41,7 @@ func NewClient(riskLevels []string, apiKey, url string) (Client, error) {
 		apiKey:     apiKey,
 		url:        url,
 		riskLevels: riskLevels,
-	}, nil
+	}
 }
 
 // ScreenAddress screens an address from the Chainalysis API.
@@ -69,7 +69,6 @@ func (c clientImpl) handleResponse(ctx context.Context, address string, resp *re
 	}
 
 	// If the user is not registered, register them and try again.
-	//var result Entity
 	if userNotRegistered(rawResponse) {
 		if err = c.registerAddress(ctx, address); err != nil {
 			return false, fmt.Errorf("could not register address: %w", err)

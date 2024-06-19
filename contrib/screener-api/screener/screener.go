@@ -59,11 +59,9 @@ func NewScreener(ctx context.Context, cfg config.Config, metricHandler metrics.H
 
 	docs.SwaggerInfo.Title = "Screener API"
 	docs.SwaggerInfo.Host = fmt.Sprintf("localhost:%d", cfg.Port)
-	screener.client, err = chainalysis.NewClient(
+
+	screener.client = chainalysis.NewClient(
 		cfg.RiskLevels, cfg.ChainalysisKey, core.GetEnv("CHAINALYSIS_URL", cfg.ChainalysisURL))
-	if err != nil {
-		return nil, fmt.Errorf("could not create Chainalysis client: %w", err)
-	}
 
 	screener.blacklistCache = make(map[string]bool)
 	for _, item := range cfg.Whitelist {
@@ -159,6 +157,7 @@ func (s *screenerImpl) screenAddress(c *gin.Context) {
 	address := strings.ToLower(c.Param("address"))
 	if address == "" {
 		logger.Errorf("address is required")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "address is required"})
 		return
 	}
 
@@ -171,6 +170,7 @@ func (s *screenerImpl) screenAddress(c *gin.Context) {
 	// If not, check request Chainalysis for the risk assessment.
 	blocked, err := s.client.ScreenAddress(c.Request.Context(), address)
 	if err != nil {
+		logger.Errorf("error screening address: %s", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
