@@ -183,7 +183,9 @@ func (s *ScreenerSuite) TestScreener() {
 	c := chainalysis.NewClient([]string{"Severe", "High"}, "key", "url")
 	NotNil(s.T(), c)
 
-	c.ScreenAddress(s.GetTestContext(), "0x123")
+	ot, err := c.ScreenAddress(s.GetTestContext(), "0x123")
+	NotNil(s.T(), err)
+	False(s.T(), ot)
 }
 
 type mockClient struct {
