@@ -59,8 +59,8 @@ func NewScreener(ctx context.Context, cfg config.Config, metricHandler metrics.H
 
 	docs.SwaggerInfo.Title = "Screener API"
 	docs.SwaggerInfo.Host = fmt.Sprintf("localhost:%d", cfg.Port)
-
-	screener.client, err = chainalysis.NewClient(cfg.ChainalysisKey, core.GetEnv("CHAINALYSIS_URL", cfg.ChainalysisURL))
+	screener.client, err = chainalysis.NewClient(
+		cfg.RiskLevels, cfg.ChainalysisKey, core.GetEnv("CHAINALYSIS_URL", cfg.ChainalysisURL))
 	if err != nil {
 		return nil, fmt.Errorf("could not create Chainalysis client: %w", err)
 	}
@@ -85,6 +85,8 @@ func NewScreener(ctx context.Context, cfg config.Config, metricHandler metrics.H
 	screener.router.POST("/api/data/sync", screener.authMiddleware(cfg), screener.blacklistAddress)
 	screener.router.GET("/:address", screener.screenAddress)
 	screener.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
+
+	gin.SetMode(gin.ReleaseMode)
 
 	return &screener, nil
 }

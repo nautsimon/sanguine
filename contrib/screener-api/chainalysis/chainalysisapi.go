@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -21,13 +22,14 @@ type Client interface {
 
 // clientImpl is the implementation of the Chainalysis API client.
 type clientImpl struct {
-	client *resty.Client
-	apiKey string
-	url    string
+	client     *resty.Client
+	apiKey     string
+	url        string
+	riskLevels []string
 }
 
 // NewClient creates a new Chainalysis API client.
-func NewClient(apiKey, url string) (Client, error) {
+func NewClient(riskLevels []string, apiKey, url string) (Client, error) {
 	client := resty.New().
 		SetBaseURL(url).
 		SetHeader("Content-Type", "application/json").
@@ -35,9 +37,10 @@ func NewClient(apiKey, url string) (Client, error) {
 		SetTimeout(30 * time.Second)
 
 	return &clientImpl{
-		client: client,
-		apiKey: apiKey,
-		url:    url,
+		client:     client,
+		apiKey:     apiKey,
+		url:        url,
+		riskLevels: riskLevels,
 	}, nil
 }
 
@@ -47,7 +50,7 @@ func (c *clientImpl) ScreenAddress(ctx context.Context, address string) (bool, e
 	resp, err := c.client.R().
 		SetContext(ctx).
 		SetPathParam("address", address).
-		Get(EntityEndpoint)
+		Get(EntityEndpoint + "/" + address)
 	if err != nil {
 		return false, fmt.Errorf("could not get response: %w", err)
 	}
@@ -62,31 +65,32 @@ func (c clientImpl) handleResponse(ctx context.Context, address string, resp *re
 	var rawResponse map[string]interface{}
 	var err error
 	if err := json.Unmarshal(resp.Body(), &rawResponse); err != nil {
-		return false, fmt.Errorf("could not unmarshal response: %w", err)
+		return false, fmt.Errorf("could not unmarshal response 1: %w", err)
 	}
 
 	// If the user is not registered, register them and try again.
-	var result Entity
+	//var result Entity
 	if userNotRegistered(rawResponse) {
 		if err = c.registerAddress(ctx, address); err != nil {
 			return false, fmt.Errorf("could not register address: %w", err)
 		}
 
 		// Then try again.
-		time.Sleep(1 * time.Second)
-		if resp, err = c.client.R().
+		time.Sleep(2 * time.Second)
+		newResp, err := c.client.R().
 			SetContext(ctx).
 			SetPathParam("address", address).
-			Get(EntityEndpoint); err != nil {
+			Get(EntityEndpoint + "/" + address)
+		if err != nil {
 			return false, fmt.Errorf("could not get response: %w", err)
+		}
+		if err := json.Unmarshal(newResp.Body(), &rawResponse); err != nil {
+			return false, fmt.Errorf("could not unmarshal response 2: %w", err)
 		}
 	}
 
-	if err := json.Unmarshal(resp.Body(), &result); err != nil {
-		return false, fmt.Errorf("could not unmarshal response: %w", err)
-	}
-
-	return result.Risk == "Severe", nil
+	risk, _ := rawResponse["risk"].(string)
+	return slices.Contains(c.riskLevels, risk), nil
 }
 
 // registerAddress registers an address in the case that we try and screen for a nonexistent address.
@@ -94,60 +98,15 @@ func (c *clientImpl) registerAddress(ctx context.Context, address string) error 
 	payload := map[string]interface{}{
 		"address": address,
 	}
-	if _, err := c.client.R().
-		SetContext(ctx).
-		SetBody(payload).
-		Post(EntityEndpoint); err != nil {
+	res, err := c.client.R().SetContext(ctx).SetBody(payload).Post(EntityEndpoint)
+	if err != nil {
 		return fmt.Errorf("could not register address: %w", err)
+	}
+	if res.IsError() {
+		return fmt.Errorf("could not register address: %s", res.Status())
 	}
 
 	return nil
-}
-
-// Entity is a struct that represents an entity in the Chainalysis API.
-type Entity struct {
-	Address                string                  `json:"address"`
-	Risk                   string                  `json:"risk"`
-	RiskReason             string                  `json:"riskReason"`
-	Cluster                Cluster                 `json:"cluster"`
-	AddressIdentifications []AddressIdentification `json:"addressIdentifications"`
-	Exposures              []Exposure              `json:"exposures"`
-	Triggers               []Trigger               `json:"triggers"`
-	Status                 string                  `json:"status"`
-}
-
-// Cluster is a struct that represents a cluster in the Chainalysis API.
-type Cluster struct {
-	Name     string `json:"name"`
-	Category string `json:"category"`
-}
-
-// AddressIdentification is a struct that represents an address identification in the Chainalysis API.
-type AddressIdentification struct {
-	Name        string `json:"name"`
-	Category    string `json:"category"`
-	Description string `json:"description"`
-}
-
-// Exposure is a struct that represents an exposure in the Chainalysis API.
-type Exposure struct {
-	Category string  `json:"category"`
-	Value    float64 `json:"value"`
-}
-
-// Trigger is a struct that represents a trigger in the Chainalysis API.
-type Trigger struct {
-	Category      string        `json:"category"`
-	Percentage    float64       `json:"percentage"`
-	Message       string        `json:"message"`
-	RuleTriggered RuleTriggered `json:"ruleTriggered"`
-}
-
-// RuleTriggered is a struct that represents a rule triggered in the Chainalysis API.
-type RuleTriggered struct {
-	Risk         string  `json:"risk"`
-	MinThreshold float64 `json:"minThreshold"`
-	MaxThreshold float64 `json:"maxThreshold"`
 }
 
 var _ Client = &clientImpl{}

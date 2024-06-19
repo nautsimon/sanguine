@@ -3,7 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/synapsecns/sanguine/contrib/screener-api.svg)](https://pkg.go.dev/github.com/synapsecns/sanguine/contrib/screener-api)
 [![Go Report Card](https://goreportcard.com/badge/github.com/synapsecns/sanguine/contrib/screener-api)](https://goreportcard.com/report/github.com/synapsecns/sanguine/contrib/screener-api)
 
-The screening api provides a simple restful interface for checking wether an address is blocked or not against a variety of data sources. Right now, two data sources are supported:
+The screening api provides a simple restful interface for checking whether an address is blocked or not against a variety of data sources. Right now, two data sources are supported:
 
 - Blacklist URL: a json list of addresses that are blocked
 - Chainalysis: the Entity API runs a screen against an address to quantify the risk associated with it, `Severe`, `High`, `Medium`, or `Low`.

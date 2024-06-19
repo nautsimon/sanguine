@@ -66,16 +66,15 @@ func (s *ScreenerSuite) TestScreener() {
 	s.T().Setenv("TRM_URL", "")
 
 	cfg := config.Config{
-		AppSecret:      "secret",
-		AppID:          "appid",
-		BlacklistURL:   "https://synapseprotocol.com/blacklist.json", // TODO: mock this out
-		ChainalysisURL: "https://api.chainalysis.com",
-		Port:           s.port,
+		AppSecret:    "secret",
+		AppID:        "appid",
+		BlacklistURL: "https://synapseprotocol.com/blacklist.json", // TODO: mock this out
+		Port:         s.port,
 		Database: config.DatabaseConfig{
 			Type: dbcommon.Sqlite.String(),
 			DSN:  filet.TmpDir(s.T(), ""),
 		},
-		Severities: []string{"Severe", "High"},
+		RiskLevels: []string{"Severe", "High"},
 	}
 
 	realScreener, err := screener.NewTestScreener(s.GetTestContext(), cfg, s.metrics)
@@ -89,56 +88,32 @@ func (s *ScreenerSuite) TestScreener() {
 	}()
 
 	m := mockClient{
-		entityMap: map[string]*chainalysis.Entity{
+		entityMap: map[string]*Entity{
 			"0x123": {
-				Address:    "0x123",
-				Risk:       "Severe",
-				RiskReason: "none",
-				Cluster:    chainalysis.Cluster{Name: "Cluster A", Category: "Category 1"},
-				AddressIdentifications: []chainalysis.AddressIdentification{
-					{
-						Name:        "Name A",
-						Category:    "Category A",
-						Description: "Description A",
-					},
+				Address:                "0x123",
+				Risk:                   "Low",
+				Cluster:                Cluster{Name: "Example Cluster 2", Category: "benign activity"},
+				RiskReason:             "Low risk example",
+				AddressType:            "EXCHANGE",
+				AddressIdentifications: []interface{}{},
+				Exposures: []Exposure{
+					{Category: "decentralized exchange", Value: 1234.56, ExposureType: "indirect", Direction: "both_directions"},
+					{Category: "mining", Value: 789.01, ExposureType: "direct", Direction: "both_directions"},
 				},
-				Exposures: []chainalysis.Exposure{{Category: "Exposure A", Value: 100.0}},
-				Triggers: []chainalysis.Trigger{
-					{
-						Category:      "Trigger A",
-						Percentage:    0.1,
-						Message:       "Message A",
-						RuleTriggered: chainalysis.RuleTriggered{Risk: "low", MinThreshold: 0.0, MaxThreshold: 1.0},
-					},
-				},
-				Status: "active",
+				Triggers: []interface{}{},
 			},
 			"0x456": {
-				Address:    "0x456",
-				Risk:       "Severe",
-				RiskReason: "fraud",
-				Cluster:    chainalysis.Cluster{Name: "Cluster B", Category: "Category 2"},
-				AddressIdentifications: []chainalysis.AddressIdentification{
-					{
-						Name:        "Name B",
-						Category:    "Category B",
-						Description: "Description B",
-					},
+				Address:                "0x456",
+				Risk:                   "High",
+				Cluster:                Cluster{Name: "High Risk Cluster", Category: "fraud"},
+				RiskReason:             "High risk due to fraud",
+				AddressType:            "WALLET",
+				AddressIdentifications: []interface{}{},
+				Exposures: []Exposure{
+					{Category: "fee", Value: 5678.90, ExposureType: "indirect", Direction: "outgoing"},
+					{Category: "token smart contract", Value: 3456.78, ExposureType: "direct", Direction: "incoming"},
 				},
-				Exposures: []chainalysis.Exposure{{Category: "Exposure B", Value: 200.0}},
-				Triggers: []chainalysis.Trigger{
-					{
-						Category:   "Trigger B",
-						Percentage: 0.2,
-						Message:    "Message B",
-						RuleTriggered: chainalysis.RuleTriggered{
-							Risk:         "high",
-							MinThreshold: 1.0,
-							MaxThreshold: 2.0,
-						},
-					},
-				},
-				Status: "inactive",
+				Triggers: []interface{}{},
 			},
 		},
 	}
@@ -207,7 +182,7 @@ func (s *ScreenerSuite) TestScreener() {
 }
 
 type mockClient struct {
-	entityMap map[string]*chainalysis.Entity
+	entityMap map[string]*Entity
 }
 
 // ScreenAddress mocks the screen address method.
@@ -233,30 +208,43 @@ func (m mockClient) ScreenAddress(ctx context.Context, address string) (bool, er
 
 // RegisterAddress mocks the register address method.
 func (m mockClient) RegisterAddress(ctx context.Context, address string) error {
-	m.entityMap[address] = &chainalysis.Entity{
-		Address:    address,
-		Risk:       "low",
-		RiskReason: "none",
-		Cluster:    chainalysis.Cluster{Name: "Cluster A", Category: "Category 1"},
-		AddressIdentifications: []chainalysis.AddressIdentification{
-			{
-				Name:        "Name A",
-				Category:    "Category A",
-				Description: "Description A",
-			},
+	m.entityMap[address] = &Entity{
+		Address:                "0x1234abcdef1234abcdef1234abcdef1234abcd",
+		Risk:                   "Critical",
+		Cluster:                Cluster{Name: "Critical Risk Cluster", Category: "money laundering"},
+		RiskReason:             "Involved in money laundering",
+		AddressType:            "PRIVATE_WALLET",
+		AddressIdentifications: []interface{}{},
+		Exposures: []Exposure{
+			{Category: "smart contract", Value: 9876.54, ExposureType: "indirect", Direction: "both_directions"},
+			{Category: "stolen funds", Value: 1234.56, ExposureType: "direct", Direction: "both_directions"},
 		},
-		Exposures: []chainalysis.Exposure{{Category: "Exposure A", Value: 100.0}},
-		Triggers: []chainalysis.Trigger{
-			{
-				Category:      "Trigger A",
-				Percentage:    0.1,
-				Message:       "Message A",
-				RuleTriggered: chainalysis.RuleTriggered{Risk: "low", MinThreshold: 0.0, MaxThreshold: 1.0},
-			},
-		},
-		Status: "active",
+		Triggers: []interface{}{},
 	}
 	return nil
 }
 
 var _ chainalysis.Client = mockClient{}
+
+type Exposure struct {
+	Category     string  `json:"category"`
+	Value        float64 `json:"value"`
+	ExposureType string  `json:"exposureType"`
+	Direction    string  `json:"direction"`
+}
+
+type Cluster struct {
+	Name     string `json:"name"`
+	Category string `json:"category"`
+}
+
+type Entity struct {
+	Address                string        `json:"address"`
+	Risk                   string        `json:"risk"`
+	Cluster                Cluster       `json:"cluster"`
+	RiskReason             string        `json:"riskReason"`
+	AddressType            string        `json:"addressType"`
+	AddressIdentifications []interface{} `json:"addressIdentifications"`
+	Exposures              []Exposure    `json:"exposures"`
+	Triggers               []interface{} `json:"triggers"`
+}
