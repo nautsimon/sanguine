@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -88,10 +89,11 @@ func (s *ScreenerSuite) TestScreener() {
 	}()
 
 	m := mockClient{
+		risks: []string{"Severe", "High"},
 		entityMap: map[string]*Entity{
 			"0x123": {
 				Address:                "0x123",
-				Risk:                   "Low",
+				Risk:                   "Severe",
 				Cluster:                Cluster{Name: "Example Cluster 2", Category: "benign activity"},
 				RiskReason:             "Low risk example",
 				AddressType:            "EXCHANGE",
@@ -189,6 +191,7 @@ func (s *ScreenerSuite) TestScreener() {
 }
 
 type mockClient struct {
+	risks     []string
 	entityMap map[string]*Entity
 }
 
@@ -206,7 +209,7 @@ func (m mockClient) ScreenAddress(ctx context.Context, address string) (bool, er
 		entity = m.entityMap[address]
 	}
 
-	if entity.Risk == "Severe" {
+	if slices.Contains(m.risks, entity.Risk) {
 		return true, nil
 	}
 
