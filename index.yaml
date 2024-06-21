@@ -712,6 +712,21 @@ entries:
   cctp:
   - apiVersion: v2
     appVersion: 1.16.0
+    created: "2024-06-21T00:00:46.389701199Z"
+    dependencies:
+    - condition: mysql.enabled
+      name: mysql
+      repository: https://charts.bitnami.com/bitnami
+      version: 9.3.2
+    description: A cctp chart
+    digest: 0e73c8cfc9276a9da18d06f3703cfd96d24d63a90d22116d5395e7f63417cd3b
+    name: cctp
+    type: application
+    urls:
+    - https://github.com/synapsecns/sanguine/releases/download/cctp-0.3.0/cctp-0.3.0.tgz
+    version: 0.3.0
+  - apiVersion: v2
+    appVersion: 1.16.0
     created: "2023-10-07T00:24:26.989065439Z"
     dependencies:
     - condition: mysql.enabled
@@ -1678,4 +1693,4 @@ entries:
     urls:
     - https://github.com/synapsecns/sanguine/releases/download/sinner-0.1.0/sinner-0.1.0.tgz
     version: 0.1.0
-generated: "2024-05-09T14:50:37.28663523Z"
+generated: "2024-06-21T00:00:46.389969799Z"
