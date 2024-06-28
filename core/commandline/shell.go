@@ -51,17 +51,16 @@ func GenerateShellCommand(shellCommands []*cli.Command) *cli.Command {
 				}
 			}
 
-			sigs := make(chan os.Signal)
+			sigs := make(chan os.Signal, 1)
 			ctx, cancel := context.WithCancel(c.Context)
+			signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
 			go func() {
-				for sig := range sigs {
-					if sig == syscall.SIGINT || sig == syscall.SIGTERM {
-						cancel()
-						fmt.Printf("\n(type \"%s\", \"%s\" or \"%s\" to exit)\n\n >", quitCommand, exitCommand, quitCommandShort)
-					}
+				for range sigs {
+					cancel()
+					fmt.Printf("\n(type \"%s\", \"%s\" or \"%s\" to exit)\n\n >", quitCommand, exitCommand, quitCommandShort)
 				}
 			}()
-			signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 			defer func() {
 				signal.Stop(sigs)
 				close(sigs)
