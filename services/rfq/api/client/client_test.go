@@ -1,6 +1,8 @@
 package client_test
 
 import (
+	"fmt"
+
 	"github.com/synapsecns/sanguine/services/rfq/api/model"
 )
 
@@ -17,6 +19,7 @@ func (c *ClientSuite) TestPutAndGetQuote() {
 		FixedFee:        "10",
 	}
 
+	fmt.Printf("wallet address: %v\n", c.testWallet.Address().String())
 	err := c.client.PutQuote(c.GetTestContext(), &req)
 	c.Require().NoError(err)
 

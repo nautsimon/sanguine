@@ -70,9 +70,13 @@ func NewAuthenticatedClient(metrics metrics.Handler, rfqURL string, reqSigner si
 			// so that full auth header string: auth = strconv.Itoa(time.Now().Unix()) + ":" + signature
 			// Get the current Unix timestamp as a string.
 			now := strconv.Itoa(int(time.Now().Unix()))
+			fmt.Printf("raw timestamp: %v\n", now)
 
 			// Prepare the data to be signed.
 			data := "\x19Ethereum Signed Message:\n" + strconv.Itoa(len(now)) + now
+			fmt.Printf("raw payload: %v\n", data)
+			fmt.Printf("raw payload bytes: %v\n", []byte(data))
+			fmt.Printf("raw payload hex: %v\n", hexutil.Encode([]byte(data)))
 
 			sig, err := reqSigner.SignMessage(request.Context(), []byte(data), true)
 
@@ -82,6 +86,7 @@ func NewAuthenticatedClient(metrics metrics.Handler, rfqURL string, reqSigner si
 
 			res := fmt.Sprintf("%s:%s", now, hexutil.Encode(signer.Encode(sig)))
 			request.SetHeader("Authorization", res)
+			fmt.Printf("encoded signature: %v\n", res)
 
 			return nil
 		})
