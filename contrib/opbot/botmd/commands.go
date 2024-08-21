@@ -21,6 +21,7 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/slack-io/slacker"
 	"github.com/synapsecns/sanguine/contrib/opbot/signoz"
+	"github.com/synapsecns/sanguine/core/retry"
 	"github.com/synapsecns/sanguine/ethergo/chaindata"
 	"github.com/synapsecns/sanguine/ethergo/client"
 	rfqClient "github.com/synapsecns/sanguine/services/rfq/api/client"
@@ -257,7 +258,8 @@ func (b *Bot) rfqLookupCommand() *slacker.CommandDefinition {
 			if err != nil {
 				log.Println(err)
 			}
-		}}
+		},
+	}
 }
 
 // nolint: gocognit, cyclop.
@@ -277,45 +279,68 @@ func (b *Bot) rfqRefund() *slacker.CommandDefinition {
 				return
 			}
 
+			var rawRequest *relapi.GetQuoteRequestResponse
+			var err error
+			var relClient relapi.RelayerClient
 			for _, relayer := range b.cfg.RelayerURLS {
-				relClient := relapi.NewRelayerClient(b.handler, relayer)
+				relClient = relapi.NewRelayerClient(b.handler, relayer)
 
-				rawRequest, err := getQuoteRequest(ctx.Context(), relClient, tx)
+				rawRequest, err = relClient.GetQuoteRequestByTxHash(ctx.Context(), tx)
 				if err != nil {
-					_, err := ctx.Response().Reply("error fetching quote request")
-					if err != nil {
-						log.Println(err)
-					}
-					return
-				}
-
-				fastBridgeContract, err := b.makeFastBridge(ctx.Context(), rawRequest)
-				if err != nil {
-					_, err := ctx.Response().Reply(err.Error())
-					if err != nil {
-						log.Println(err)
-					}
-					return
-				}
-				nonce, err := b.submitter.SubmitTransaction(ctx.Context(), big.NewInt(int64(rawRequest.OriginChainID)), func(transactor *bind.TransactOpts) (tx *types.Transaction, err error) {
-					tx, err = fastBridgeContract.Refund(transactor, common.Hex2Bytes(rawRequest.QuoteRequestRaw))
-					if err != nil {
-						return nil, fmt.Errorf("error submitting refund: %w", err)
-					}
-					return tx, nil
-				})
-				if err != nil {
-					log.Printf("error submitting refund: %v\n", err)
 					continue
 				}
+			}
 
-				// TODO: follow the lead of https://github.com/synapsecns/sanguine/pull/2845
-				_, err = ctx.Response().Reply(fmt.Sprintf("refund submitted with nonce %d", nonce))
+			fastBridgeContract, err := b.makeFastBridge(ctx.Context(), rawRequest)
+			if err != nil {
+				_, err := ctx.Response().Reply(err.Error())
 				if err != nil {
 					log.Println(err)
 				}
 				return
 			}
+			nonce, err := b.submitter.SubmitTransaction(ctx.Context(), big.NewInt(int64(rawRequest.OriginChainID)), func(transactor *bind.TransactOpts) (tx *types.Transaction, err error) {
+				tx, err = fastBridgeContract.Refund(transactor, common.Hex2Bytes(rawRequest.QuoteRequestRaw))
+				if err != nil {
+					return nil, fmt.Errorf("error submitting refund: %w", err)
+				}
+				return tx, nil
+			})
+			if err != nil {
+				log.Printf("error submitting refund: %v\n", err)
+				_, err := ctx.Response().Reply(fmt.Sprintf("error submitting refund: %v", err))
+				if err != nil {
+					log.Println(err)
+				}
+			}
+
+			// TODO: follow the lead of https://github.com/synapsecns/sanguine/pull/2845
+			var txHash *relapi.TxHashByNonceResponse
+			err = retry.WithBackoff(
+				ctx.Context(),
+				func(ctx context.Context) error {
+					txHash, err = relClient.GetTxHashByNonce(
+						ctx,
+						&relapi.GetTxByNonceRequest{
+							ChainID: rawRequest.OriginChainID,
+							Nonce:   nonce,
+						})
+					if err != nil {
+						return err
+					}
+					return nil
+				},
+			)
+
+			_, err = ctx.Response().Reply(
+				fmt.Sprintf(
+					"refund submitted with nonce %s",
+					toTXSlackLink(txHash.Hash, rawRequest.OriginChainID)),
+			)
+			if err != nil {
+				log.Println(err)
+			}
+			return
 		},
 	}
 }
@@ -386,21 +411,4 @@ func toTXSlackLink(txHash string, chainID uint32) string {
 func stripLinks(input string) string {
 	linkRegex := regexp.MustCompile(`<https?://[^|>]+\|([^>]+)>`)
 	return linkRegex.ReplaceAllString(input, "$1")
-}
-
-func getQuoteRequest(ctx context.Context, client relapi.RelayerClient, tx string) (*relapi.GetQuoteRequestResponse, error) {
-	// at this point tx can be a txid or a has, we try both
-	txRequest, err := client.GetQuoteRequestStatusByTxHash(ctx, tx)
-	if err == nil {
-		// override tx with txid
-		tx = txRequest.TxID
-	}
-
-	// look up quote request
-	qr, err := client.GetQuoteRequestByTXID(ctx, tx)
-	if err != nil {
-		return nil, fmt.Errorf("error fetching quote request: %w", err)
-	}
-
-	return qr, nil
 }
