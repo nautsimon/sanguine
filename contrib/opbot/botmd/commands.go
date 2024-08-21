@@ -3,7 +3,6 @@
 package botmd
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"math/big"
@@ -18,7 +17,6 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/slack-io/slacker"
 	"github.com/synapsecns/sanguine/contrib/opbot/signoz"
-	"github.com/synapsecns/sanguine/core/retry"
 	"github.com/synapsecns/sanguine/services/rfq/relayer/relapi"
 )
 
@@ -275,6 +273,7 @@ func (b *Bot) rfqRefund() *slacker.CommandDefinition {
 				}
 				return
 			}
+
 			nonce, err := b.submitter.SubmitTransaction(ctx.Context(), big.NewInt(int64(rawRequest.OriginChainID)), func(transactor *bind.TransactOpts) (tx *types.Transaction, err error) {
 				tx, err = fastBridgeContract.Refund(transactor, common.Hex2Bytes(rawRequest.QuoteRequestRaw))
 				if err != nil {
@@ -290,23 +289,15 @@ func (b *Bot) rfqRefund() *slacker.CommandDefinition {
 				}
 			}
 
-			// TODO: follow the lead of https://github.com/synapsecns/sanguine/pull/2845
-			var txHash *relapi.TxHashByNonceResponse
-			err = retry.WithBackoff(
-				ctx.Context(),
-				func(ctx context.Context) error {
-					txHash, err = relClient.GetTxHashByNonce(
-						ctx,
-						&relapi.GetTxByNonceRequest{
-							ChainID: rawRequest.OriginChainID,
-							Nonce:   nonce,
-						})
-					if err != nil {
-						return err
-					}
-					return nil
-				},
-			)
+			txHash, err := waitForTxHash(ctx.Context(), relClient, rawRequest.OriginChainID, nonce)
+			if err != nil {
+				log.Printf("error waiting for tx hash: %v\n", err)
+				_, err := ctx.Response().Reply(fmt.Sprintf("error waiting for tx hash: %v", err))
+				if err != nil {
+					log.Println(err)
+				}
+				return
+			}
 
 			_, err = ctx.Response().Reply(
 				fmt.Sprintf(

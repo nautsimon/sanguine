@@ -12,6 +12,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/slack-io/slacker"
+	"github.com/synapsecns/sanguine/core/retry"
 	"github.com/synapsecns/sanguine/ethergo/chaindata"
 	"github.com/synapsecns/sanguine/ethergo/client"
 	rfqClient "github.com/synapsecns/sanguine/services/rfq/api/client"
@@ -102,4 +103,28 @@ func toTXSlackLink(txHash string, chainID uint32) string {
 func stripLinks(input string) string {
 	linkRegex := regexp.MustCompile(`<https?://[^|>]+\|([^>]+)>`)
 	return linkRegex.ReplaceAllString(input, "$1")
+}
+
+func waitForTxHash(ctx context.Context, relClient relapi.RelayerClient, chainID uint32, nonce uint64) (_ *relapi.TxHashByNonceResponse, err error) {
+	var txHash *relapi.TxHashByNonceResponse
+	err = retry.WithBackoff(
+		ctx,
+		func(ctx context.Context) error {
+			txHash, err = relClient.GetTxHashByNonce(
+				ctx,
+				&relapi.GetTxByNonceRequest{
+					ChainID: chainID,
+					Nonce:   nonce,
+				})
+			if err != nil {
+				return err
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return txHash, nil
 }
