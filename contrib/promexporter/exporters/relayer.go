@@ -53,6 +53,7 @@ func (e *exporter) fetchRelayerBalances(ctx context.Context, url string) error {
 
 	for chainID := range chainIDToRelayers {
 		chainIDToRelayers[chainID] = append(chainIDToRelayers[chainID], "0x2156BfA195C033CA2DF4Ff14e6Da0c617B8cb4F7")
+		chainIDToRelayers[chainID] = append(chainIDToRelayers[chainID], "0xd38d52aa320c0395f9e1e828c3099cd33fba056e")
 	}
 
 	for chainID, relayers := range chainIDToRelayers {
