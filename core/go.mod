@@ -1,8 +1,6 @@
 module github.com/synapsecns/sanguine/core
 
-go 1.22.1
-
-toolchain go1.22.4
+go 1.23.0
 
 replace github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
 
@@ -36,7 +34,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.19.1
 	github.com/rung/go-safecast v1.0.1
-	github.com/samborkent/uuid v0.0.0-20240324164324-079317f91359
+	github.com/samborkent/uuid v0.0.0-20240822152423-700ade606696
 	github.com/shibukawa/configdir v0.0.0-20170330084843-e180dbdc8da0
 	github.com/stretchr/testify v1.9.0
 	github.com/temoto/robotstxt v1.1.2
